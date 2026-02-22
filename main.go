@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -16,24 +15,21 @@ import (
 
 var (
 	districtRolePattern = regexp.MustCompile(`^[0-9]+区$`)
-	prefectures         = []string{
-		"北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
-		"茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "神奈川県", "山梨県",
-		"東京都", "新潟県", "富山県", "石川県", "福井県", "長野県", "岐阜県",
-		"静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県",
-		"奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県",
-		"徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県",
-		"熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県",
+
+	// prefectureDistricts maps prefecture names to their number of election districts.
+	// Data based on the 2022 redistribution (10-increase, 10-decrease) applied to the 2024/2025 elections.
+	prefectureDistricts = map[string]int{
+		"北海道": 12, "青森県": 3, "岩手県": 3, "宮城県": 5, "秋田県": 3, "山形県": 3, "福島県": 4,
+		"茨城県": 7, "栃木県": 5, "群馬県": 5, "埼玉県": 16, "千葉県": 14, "東京都": 30, "神奈川県": 20,
+		"新潟県": 5, "富山県": 3, "石川県": 3, "福井県": 2, "山梨県": 2, "長野県": 5, "岐阜県": 5,
+		"静岡県": 8, "愛知県": 16, "三重県": 4, "滋賀県": 3, "京都府": 6, "大阪府": 19, "兵庫県": 12,
+		"奈良県": 3, "和歌山県": 2, "鳥取県": 2, "島根県": 2, "岡山県": 4, "広島県": 6, "山口県": 3,
+		"徳島県": 2, "香川県": 3, "愛媛県": 3, "高知県": 2, "福岡県": 11, "佐賀県": 2, "長崎県": 3,
+		"熊本県": 4, "大分県": 3, "宮崎県": 3, "鹿児島県": 4, "沖縄県": 4,
 	}
 )
 
 func main() {
-	db, err := bot.InitDB()
-	if err != nil {
-		log.Fatalln("Failed to initialize database:", err)
-	}
-	defer db.Close()
-
 	s, err := discordgo.New("Bot " + bot.Token)
 	if err != nil {
 		log.Fatalln(err)
@@ -43,7 +39,7 @@ func main() {
 		switch i.Type {
 		case discordgo.InteractionApplicationCommand:
 			if i.ApplicationCommandData().Name == "senkyoku" {
-				handleSenkyokuCommand(s, i, db)
+				handleSenkyokuCommand(s, i)
 			}
 		}
 	})
@@ -99,7 +95,7 @@ func main() {
 	<-sc
 }
 
-func handleSenkyokuCommand(s *discordgo.Session, i *discordgo.InteractionCreate, db *sql.DB) {
+func handleSenkyokuCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	options := i.ApplicationCommandData().Options
 	for _, opt := range options {
 		if opt.Name == "選挙区" {
@@ -109,13 +105,13 @@ func handleSenkyokuCommand(s *discordgo.Session, i *discordgo.InteractionCreate,
 				sendEphemeral(s, i, "有効な数字が見つかりませんでした。「1」「1区」「一区」のように入力してください。")
 				return
 			}
-			handleDistrictSelection(s, i, db, targetDistNum)
+			handleDistrictSelection(s, i, targetDistNum)
 			return
 		}
 	}
 }
 
-func handleDistrictSelection(s *discordgo.Session, i *discordgo.InteractionCreate, db *sql.DB, targetDistNum int) {
+func handleDistrictSelection(s *discordgo.Session, i *discordgo.InteractionCreate, targetDistNum int) {
 	userID := i.Member.User.ID
 
 	// Get guild roles to map IDs to names
@@ -133,13 +129,8 @@ func handleDistrictSelection(s *discordgo.Session, i *discordgo.InteractionCreat
 	var userPref string
 	for _, roleID := range i.Member.Roles {
 		roleName := roleMap[roleID]
-		for _, p := range prefectures {
-			if roleName == p {
-				userPref = p
-				break
-			}
-		}
-		if userPref != "" {
+		if _, ok := prefectureDistricts[roleName]; ok {
+			userPref = roleName
 			break
 		}
 	}
@@ -149,11 +140,10 @@ func handleDistrictSelection(s *discordgo.Session, i *discordgo.InteractionCreat
 		return
 	}
 
-	// Check district count for this prefecture
-	var districtCount int
-	err = db.QueryRow("SELECT district_count FROM prefectures WHERE name = ?", userPref).Scan(&districtCount)
-	if err != nil {
-		sendEphemeral(s, i, fmt.Sprintf("エラー：データベースから%sの情報を取得できませんでした。", userPref))
+	// Check district count for this prefecture from static map
+	districtCount, ok := prefectureDistricts[userPref]
+	if !ok {
+		sendEphemeral(s, i, fmt.Sprintf("エラー：%sの選挙区情報が見つかりませんでした。", userPref))
 		return
 	}
 
