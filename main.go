@@ -77,10 +77,10 @@ func main() {
 			fmt.Fprintf(w, "Bot is healthy!")
 		})
 
-		// Koyeb uses port 8080 by default
+		// Koyeb uses port 8000 by default
 		port := os.Getenv("PORT")
 		if port == "" {
-			port = "8080"
+			port = "8000"
 		}
 
 		fmt.Printf("Health check server listening on port %s\n", port)
