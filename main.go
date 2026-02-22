@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"syscall"
 
-	bot "github.com/1l0/asagumo"
+	bot "github.com/1l0/asagumo" // TODO: move to the new one
 	"github.com/bwmarrin/discordgo"
 )
 

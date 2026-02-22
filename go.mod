@@ -1,4 +1,4 @@
-module github.com/1l0/asagumo-run
+module github.com/ritehand/asagumo-run
 
 go 1.25.5
 
