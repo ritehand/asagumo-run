@@ -124,9 +124,6 @@ func main() {
 	sb.WriteString("\tchannelsErr = nil\n")
 	sb.WriteString("}\n")
 
-	// Helper for quoting strings in slice
-	_ = quoteList // silence lint if needed
-
 	outDir := "gen"
 	outFile := filepath.Join(outDir, "generated.go")
 

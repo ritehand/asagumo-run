@@ -1,3 +1,5 @@
+//go:generate go run -C ../ cmd/gen/main.go
+
 package gen
 
 import "errors"
