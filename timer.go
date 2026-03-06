@@ -17,10 +17,11 @@ type SavedOverwrite struct {
 }
 
 type TimerSession struct {
-	GuildID   string
-	ChannelID string
-	Total     time.Duration
-	Start     time.Time
+	Connection *discordgo.VoiceConnection
+	GuildID    string
+	ChannelID  string
+	Total      time.Duration
+	Start      time.Time
 
 	userSpeakingTime map[string]time.Duration
 	lastStart        map[string]time.Time
@@ -33,7 +34,6 @@ type TimerSession struct {
 	mu     sync.Mutex
 	ctx    context.Context
 	cancel context.CancelFunc
-	closer func() // close VoiceConnection
 	Active bool
 }
 
@@ -47,13 +47,7 @@ var timerManager = &TimerManager{sessions: make(map[string]*TimerSession)}
 func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, replyChannelID string, total time.Duration) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-	vc, err := s.ChannelVoiceJoin(guildID, channelID, true, false)
-	if err != nil {
-		return err
-	}
-	vc.AddHandler(func(_ *discordgo.VoiceConnection, vs *discordgo.VoiceSpeakingUpdate) {
-		timerManager.HandleSpeakingUpdate(s, vs)
-	})
+
 	if _, ok := tm.sessions[channelID]; ok {
 		return fmt.Errorf("このチャンネルでは既にタイマーが動作中です")
 	}
@@ -76,9 +70,18 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 		return fmt.Errorf("ボイスチャンネルに参加しているユーザーがいません")
 	}
 
+	vc, err := s.ChannelVoiceJoin(guildID, channelID, true, false)
+	if err != nil {
+		return err
+	}
+	vc.AddHandler(func(_ *discordgo.VoiceConnection, vs *discordgo.VoiceSpeakingUpdate) {
+		timerManager.HandleSpeakingUpdate(s, vs)
+	})
+
 	ctx, cancel := context.WithTimeout(context.Background(), total)
 
 	session := &TimerSession{
+		Connection:       vc,
 		GuildID:          guildID,
 		ChannelID:        channelID,
 		Total:            total,
@@ -93,9 +96,6 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 		Active:           true,
 		ctx:              ctx,
 		cancel:           cancel,
-		closer: func() {
-			vc.Disconnect()
-		},
 	}
 
 	per := total / time.Duration(len(participants))
@@ -167,7 +167,6 @@ func (ts *TimerSession) end(s *discordgo.Session, replyChannelID string) {
 		ts.mu.Unlock()
 		return
 	}
-	defer ts.cancel()
 	ts.Active = false
 	participants := make([]string, 0, len(ts.participants))
 	for uid := range ts.participants {
@@ -201,9 +200,8 @@ func (ts *TimerSession) end(s *discordgo.Session, replyChannelID string) {
 			}
 		}
 	}
-
-	// close VoiceConnection
-	ts.closer()
+	ts.cancel()
+	ts.Connection.Disconnect()
 
 	// remove session
 	timerManager.mu.Lock()
