@@ -27,9 +27,10 @@ func main() {
 		switch i.Type {
 		case discordgo.InteractionApplicationCommand:
 			name := i.ApplicationCommandData().Name
-			if name == "senkyoku" {
+			switch name {
+			case "senkyoku":
 				handleSenkyokuCommand(s, i)
-			} else if name == "timer" {
+			case "timer":
 				handleTimerCommand(s, i)
 			}
 		}
@@ -39,6 +40,11 @@ func main() {
 	s.AddHandler(func(s *discordgo.Session, v *discordgo.VoiceSpeakingUpdate) {
 		// delegate to timer manager
 		timerManager.HandleSpeakingUpdate(s, v)
+	})
+
+	// Voice state updates (join/leave/move) — detect immediate joins
+	s.AddHandler(func(s *discordgo.Session, vs *discordgo.VoiceStateUpdate) {
+		timerManager.HandleVoiceStateUpdate(s, vs)
 	})
 
 	if err := s.Open(); err != nil {

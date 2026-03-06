@@ -195,6 +195,49 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 	}
 }
 
+// HandleVoiceStateUpdate processes VoiceStateUpdate events to immediately
+// detect users joining a channel and apply per-channel mute if a session is active.
+func (tm *TimerManager) HandleVoiceStateUpdate(s *discordgo.Session, vs *discordgo.VoiceStateUpdate) {
+	if vs == nil || vs.UserID == "" {
+		return
+	}
+	// ignore bot
+	if vs.UserID == s.State.User.ID {
+		return
+	}
+
+	// if user left a channel, ChannelID may be empty — only handle joins
+	if vs.ChannelID == "" {
+		return
+	}
+
+	tm.mu.Lock()
+	session, ok := tm.sessions[vs.ChannelID]
+	tm.mu.Unlock()
+	if !ok {
+		return
+	}
+
+	session.mu.Lock()
+	defer session.mu.Unlock()
+
+	uid := vs.UserID
+	if session.participants[uid] {
+		return
+	}
+
+	// mark as participant with zero allocation and mute in-channel
+	session.participants[uid] = true
+	session.allocated[uid] = 0
+	denySpeak := int64(1 << 21)
+	if err := s.ChannelPermissionSet(session.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err != nil {
+		log.Println("ChannelPermissionSet(mute on join) failed:", err)
+		return
+	}
+	session.muted[uid] = true
+	// s.ChannelMessageSend(session.ChannelID, fmt.Sprintf("<@%s> さんが途中参加したためミュートしました。", uid))
+}
+
 // handleTimerCommand is invoked from the interaction handler in main.go
 func handleTimerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	options := i.ApplicationCommandData().Options
