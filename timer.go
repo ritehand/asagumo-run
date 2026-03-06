@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sync"
@@ -30,6 +31,8 @@ type TimerSession struct {
 	timers           map[string]*time.Timer
 
 	mu     sync.Mutex
+	ctx    context.Context
+	cancel context.CancelFunc
 	Active bool
 }
 
@@ -65,6 +68,8 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 		return fmt.Errorf("ボイスチャンネルに参加しているユーザーがいません")
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), total)
+
 	session := &TimerSession{
 		GuildID:          guildID,
 		ChannelID:        channelID,
@@ -78,6 +83,7 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 		savedOverwrites:  make(map[string]SavedOverwrite),
 		timers:           make(map[string]*time.Timer),
 		Active:           true,
+		cancel:           cancel,
 	}
 
 	per := total / time.Duration(len(participants))
@@ -90,13 +96,7 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 
 	s.ChannelMessageSend(replyChannelID, fmt.Sprintf("タイマーを開始しました。合計 %v、参加者 %d、各自割当 %v", total, len(participants), per))
 
-	go session.monitorTotal()
-
-	// schedule wall-clock end: after total duration, end the session regardless of speaking
-	totalCopy := total
-	time.AfterFunc(totalCopy, func() {
-		session.end(s, replyChannelID)
-	})
+	go session.monitorTotal(ctx)
 
 	return nil
 }
@@ -112,31 +112,37 @@ func (tm *TimerManager) StopTimer(s *discordgo.Session, guildID, channelID, repl
 	}
 }
 
-func (ts *TimerSession) monitorTotal() {
+func (ts *TimerSession) monitorTotal(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
-	for range ticker.C {
-		ts.mu.Lock()
-		// compute total used
-		var sum time.Duration
-		for uid, d := range ts.userSpeakingTime {
-			sum += d
-			// if currently speaking, include running segment
-			if start, ok := ts.lastStart[uid]; ok && !start.IsZero() {
-				sum += time.Since(start)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			ts.mu.Lock()
+			// compute total used
+			var sum time.Duration
+			for uid, d := range ts.userSpeakingTime {
+				sum += d
+				// if currently speaking, include running segment
+				if start, ok := ts.lastStart[uid]; ok && !start.IsZero() {
+					sum += time.Since(start)
+				}
 			}
-		}
-		// also consider users who have lastStart but no userSpeakingTime entry yet
-		for uid, start := range ts.lastStart {
-			if start.IsZero() {
-				continue
+			// also consider users who have lastStart but no userSpeakingTime entry yet
+			for uid, start := range ts.lastStart {
+				if start.IsZero() {
+					continue
+				}
+				if _, ok := ts.userSpeakingTime[uid]; !ok {
+					sum += time.Since(start)
+				}
 			}
-			if _, ok := ts.userSpeakingTime[uid]; !ok {
-				sum += time.Since(start)
-			}
-		}
 
-		ts.mu.Unlock()
+			ts.mu.Unlock()
+
+		}
 	}
 }
 
@@ -147,6 +153,7 @@ func (ts *TimerSession) end(s *discordgo.Session, replyChannelID string) {
 		ts.mu.Unlock()
 		return
 	}
+	defer ts.cancel()
 	ts.Active = false
 	participants := make([]string, 0, len(ts.participants))
 	for uid := range ts.participants {
