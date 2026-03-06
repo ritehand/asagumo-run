@@ -74,6 +74,7 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 
 	vc, err := s.ChannelVoiceJoin(ctx, guildID, channelID, true, false)
 	if err != nil {
+		cancel()
 		return err
 	}
 	vc.AddHandler(func(_ *discordgo.VoiceConnection, vs *discordgo.VoiceSpeakingUpdate) {
