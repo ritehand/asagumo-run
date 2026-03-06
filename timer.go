@@ -17,6 +17,7 @@ type SavedOverwrite struct {
 }
 
 type TimerSession struct {
+	// Connection *discordgo.VoiceConnection
 	GuildID   string
 	ChannelID string
 	Total     time.Duration
@@ -33,6 +34,7 @@ type TimerSession struct {
 	mu     sync.Mutex
 	ctx    context.Context
 	cancel context.CancelFunc
+	closer func()
 	Active bool
 }
 
@@ -92,6 +94,9 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 		Active:           true,
 		ctx:              ctx,
 		cancel:           cancel,
+		closer: func() {
+			vc.Close()
+		},
 	}
 
 	per := total / time.Duration(len(participants))
@@ -124,6 +129,7 @@ func (tm *TimerManager) StopTimer(s *discordgo.Session, guildID, channelID, repl
 func (ts *TimerSession) monitorTotal() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
+	defer ts.closer()
 	for {
 		select {
 		case <-ts.ctx.Done():
