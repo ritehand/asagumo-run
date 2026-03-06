@@ -30,18 +30,18 @@ func main() {
 			switch name {
 			case "senkyoku":
 				handleSenkyokuCommand(s, i)
-			case "timer":
-				handleTimerCommand(s, i)
-			case "stop_timer":
-				handleStopTimerCommand(s, i)
+				// case "timer":
+				// 	handleTimerCommand(s, i)
+				// case "stop_timer":
+				// 	handleStopTimerCommand(s, i)
 			}
 		}
 	})
 
 	// Voice state updates (join/leave/move) — detect immediate joins
-	s.AddHandler(func(s *discordgo.Session, vs *discordgo.VoiceStateUpdate) {
-		timerManager.HandleVoiceStateUpdate(s, vs)
-	})
+	// s.AddHandler(func(s *discordgo.Session, vs *discordgo.VoiceStateUpdate) {
+	// 	timerManager.HandleVoiceStateUpdate(s, vs)
+	// })
 
 	if err := s.Open(); err != nil {
 		log.Fatalln(err)
@@ -62,22 +62,22 @@ func main() {
 				},
 			},
 		},
-		{
-			Name:        "timer",
-			Description: "ボイスチャンネルの持ち時間制限を開始します（例: /timer duration:30m）",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        optionNameDuration,
-					Description: "合計持ち時間（例: 30m, 1h）",
-					Required:    true,
-				},
-			},
-		},
-		{
-			Name:        "stop_timer",
-			Description: "ボイスチャンネルの持ち時間制限を終了します",
-		},
+		// {
+		// 	Name:        "timer",
+		// 	Description: "ボイスチャンネルの持ち時間制限を開始します（例: /timer duration:30m）",
+		// 	Options: []*discordgo.ApplicationCommandOption{
+		// 		{
+		// 			Type:        discordgo.ApplicationCommandOptionString,
+		// 			Name:        optionNameDuration,
+		// 			Description: "合計持ち時間（例: 30m, 1h）",
+		// 			Required:    true,
+		// 		},
+		// 	},
+		// },
+		// {
+		// 	Name:        "stop_timer",
+		// 	Description: "ボイスチャンネルの持ち時間制限を終了します",
+		// },
 	}
 
 	if _, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, bot.GuildID, commands); err != nil {
