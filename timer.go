@@ -19,6 +19,7 @@ type TimerSession struct {
 	lastStart        map[string]time.Time
 	allocated        map[string]time.Duration
 	participants     map[string]bool
+	muted            map[string]bool
 
 	mu     sync.Mutex
 	Active bool
@@ -62,6 +63,7 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 		lastStart:        make(map[string]time.Time),
 		allocated:        make(map[string]time.Duration),
 		participants:     make(map[string]bool),
+		muted:            make(map[string]bool),
 		Active:           true,
 	}
 
@@ -113,12 +115,12 @@ func (ts *TimerSession) monitorTotal(s *discordgo.Session, replyChannelID string
 			ts.mu.Unlock()
 
 			s.ChannelMessageSend(replyChannelID, "全体の持ち時間が終了しました。ミュート設定を解除します。")
-			// unmute participants (server mute false)
-			falseVar := false
+			// remove per-channel permission overwrites we added
 			for _, uid := range participants {
-				_, err := s.GuildMemberEdit(ts.GuildID, uid, &discordgo.GuildMemberParams{Mute: &falseVar})
-				if err != nil {
-					log.Println("GuildMemberEdit(unmute) failed:", err)
+				if ts.muted[uid] {
+					if err := s.ChannelPermissionDelete(ts.ChannelID, uid); err != nil {
+						log.Println("ChannelPermissionDelete(unmute) failed:", err)
+					}
 				}
 			}
 
@@ -148,7 +150,19 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 	for _, session := range sessions {
 		session.mu.Lock()
 		// process only if the user is tracked in this session
+		// If user is not part of participants set, they may have joined mid-session.
 		if !session.participants[uid] {
+			// enforce per-channel mute for late joiners
+			session.participants[uid] = true
+			session.allocated[uid] = 0
+			// deny SPEAK permission in this channel (bit 1<<21)
+			denySpeak := int64(1 << 21)
+			if err := s.ChannelPermissionSet(session.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err != nil {
+				log.Println("ChannelPermissionSet(mute late join) failed:", err)
+			} else {
+				session.muted[uid] = true
+				s.ChannelMessageSend(session.ChannelID, fmt.Sprintf("<@%s> さんは途中参加のためミュートしました。", uid))
+			}
 			session.mu.Unlock()
 			continue
 		}
@@ -167,13 +181,13 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 
 			alloc := session.allocated[uid]
 			if alloc > 0 && session.userSpeakingTime[uid] > alloc {
-				// server mute the user
-				trueVar := true
-				_, err := s.GuildMemberEdit(session.GuildID, uid, &discordgo.GuildMemberParams{Mute: &trueVar})
-				if err == nil {
+				// set per-channel permission overwrite to deny speaking
+				denySpeak := int64(1 << 21)
+				if err := s.ChannelPermissionSet(session.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err == nil {
+					session.muted[uid] = true
 					s.ChannelMessageSend(session.ChannelID, fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました。", uid))
 				} else {
-					log.Println("GuildMemberEdit(mute) failed:", err)
+					log.Println("ChannelPermissionSet(mute) failed:", err)
 				}
 			}
 		}
