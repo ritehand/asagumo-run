@@ -20,6 +20,7 @@ type TimerSession struct {
 	allocated        map[string]time.Duration
 	participants     map[string]bool
 	muted            map[string]bool
+	timers           map[string]*time.Timer
 
 	mu     sync.Mutex
 	Active bool
@@ -64,6 +65,7 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 		allocated:        make(map[string]time.Duration),
 		participants:     make(map[string]bool),
 		muted:            make(map[string]bool),
+		timers:           make(map[string]*time.Timer),
 		Active:           true,
 	}
 
@@ -168,16 +170,81 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 		}
 
 		if v.Speaking {
+			// start speaking: record start time and schedule immediate-stop timer
+			if session.muted[uid] {
+				// already muted; ignore
+				session.mu.Unlock()
+				continue
+			}
 			session.lastStart[uid] = time.Now()
+			// cancel any previous timer
+			if t, ok := session.timers[uid]; ok {
+				t.Stop()
+				delete(session.timers, uid)
+			}
+
+			alloc := session.allocated[uid]
+			used := session.userSpeakingTime[uid]
+			// if user has no allocation or already exhausted, mute immediately
+			if alloc > 0 {
+				remaining := alloc - used
+				if remaining <= 0 {
+					// immediate mute
+					denySpeak := int64(1 << 21)
+					if err := s.ChannelPermissionSet(session.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err == nil {
+						session.muted[uid] = true
+						s.ChannelMessageSend(session.ChannelID, fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました。", uid))
+					} else {
+						log.Println("ChannelPermissionSet(immediate mute) failed:", err)
+					}
+					session.mu.Unlock()
+					continue
+				}
+
+				// schedule a timer to fire when remaining elapses
+				uidCopy := uid
+				chID := session.ChannelID
+				t := time.AfterFunc(remaining, func() {
+					// lock session to check speaking state and mute flag
+					session.mu.Lock()
+					// ensure user is still speaking
+					if start, ok := session.lastStart[uidCopy]; !ok || start.IsZero() {
+						session.mu.Unlock()
+						return
+					}
+					if session.muted[uidCopy] {
+						session.mu.Unlock()
+						return
+					}
+					session.muted[uidCopy] = true
+					session.mu.Unlock()
+
+					// apply channel permission mute
+					denySpeak := int64(1 << 21)
+					if err := s.ChannelPermissionSet(chID, uidCopy, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err == nil {
+						s.ChannelMessageSend(chID, fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました。", uidCopy))
+					} else {
+						log.Println("ChannelPermissionSet(mute timer) failed:", err)
+					}
+				})
+				session.timers[uid] = t
+			}
+
 			session.mu.Unlock()
 			continue
 		}
 
-		// speaking stopped
+		// speaking stopped: accumulate time and cancel any running timer
 		if start, ok := session.lastStart[uid]; ok && !start.IsZero() {
 			dur := time.Since(start)
 			session.userSpeakingTime[uid] += dur
 			session.lastStart[uid] = time.Time{}
+
+			// cancel pending timer if exists
+			if t, ok := session.timers[uid]; ok {
+				t.Stop()
+				delete(session.timers, uid)
+			}
 
 			alloc := session.allocated[uid]
 			if alloc > 0 && session.userSpeakingTime[uid] > alloc {
