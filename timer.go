@@ -46,6 +46,13 @@ var timerManager = &TimerManager{sessions: make(map[string]*TimerSession)}
 func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, replyChannelID string, total time.Duration) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
+	vc, err := s.ChannelVoiceJoin(guildID, channelID, true, false)
+	if err != nil {
+		return err
+	}
+	vc.AddHandler(func(_ *discordgo.VoiceConnection, vs *discordgo.VoiceSpeakingUpdate) {
+		timerManager.HandleSpeakingUpdate(s, vs)
+	})
 	if _, ok := tm.sessions[channelID]; ok {
 		return fmt.Errorf("このチャンネルでは既にタイマーが動作中です")
 	}

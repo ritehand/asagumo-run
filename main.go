@@ -38,12 +38,6 @@ func main() {
 		}
 	})
 
-	// Voice speaking updates (for tracking speaking time)
-	s.AddHandler(func(s *discordgo.Session, v *discordgo.VoiceSpeakingUpdate) {
-		// delegate to timer manager
-		timerManager.HandleSpeakingUpdate(s, v)
-	})
-
 	// Voice state updates (join/leave/move) — detect immediate joins
 	s.AddHandler(func(s *discordgo.Session, vs *discordgo.VoiceStateUpdate) {
 		timerManager.HandleVoiceStateUpdate(s, vs)
