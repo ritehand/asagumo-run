@@ -517,6 +517,7 @@ func handleTimerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		sendEphemeral(s, i, "タイマーの開始に失敗しました: "+err.Error())
 		return
 	}
+	sendEphemeral(s, i, "タイマーを停止します...")
 }
 
 // handleStopTimerCommand is invoked from the interaction handler in main.go
@@ -543,6 +544,7 @@ func handleStopTimerCommand(s *discordgo.Session, i *discordgo.InteractionCreate
 		sendEphemeral(s, i, "タイマーの停止に失敗しました: "+err.Error())
 		return
 	}
+	sendEphemeral(s, i, "タイマーを開始します...")
 }
 
 // notifyAdmin sends a plain message to the configured admin channel (best-effort).
