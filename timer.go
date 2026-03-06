@@ -90,11 +90,29 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 
 	s.ChannelMessageSend(replyChannelID, fmt.Sprintf("タイマーを開始しました。合計 %v、参加者 %d、各自割当 %v", total, len(participants), per))
 
-	go session.monitorTotal(s, replyChannelID)
+	go session.monitorTotal()
+
+	// schedule wall-clock end: after total duration, end the session regardless of speaking
+	totalCopy := total
+	time.AfterFunc(totalCopy, func() {
+		session.end(s, replyChannelID)
+	})
+
 	return nil
 }
 
-func (ts *TimerSession) monitorTotal(s *discordgo.Session, replyChannelID string) {
+func (tm *TimerManager) StopTimer(s *discordgo.Session, guildID, channelID, replyChannelID string) error {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	if session, ok := tm.sessions[channelID]; ok {
+		session.end(s, replyChannelID)
+		return nil
+	} else {
+		return fmt.Errorf("このチャンネルでは現在タイマーが作動していません")
+	}
+}
+
+func (ts *TimerSession) monitorTotal() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
@@ -118,50 +136,55 @@ func (ts *TimerSession) monitorTotal(s *discordgo.Session, replyChannelID string
 			}
 		}
 
-		if sum >= ts.Total {
-			ts.Active = false
-			// before unlocking, capture participants to unmute
-			participants := make([]string, 0, len(ts.participants))
-			for uid := range ts.participants {
-				participants = append(participants, uid)
-			}
-			ts.mu.Unlock()
-
-			s.ChannelMessageSend(replyChannelID, "全体の持ち時間が終了しました。ミュート設定を解除します。")
-			// restore per-channel permission overwrites we recorded (or delete if none existed)
-			for _, uid := range participants {
-				if ts.muted[uid] {
-					if so, ok := ts.savedOverwrites[uid]; ok {
-						if so.Exists {
-							if err := s.ChannelPermissionSet(ts.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, so.Allow, so.Deny); err != nil {
-								log.Println("ChannelPermissionSet(restore) failed:", err)
-								notifyAdmin(s, ts.GuildID, fmt.Sprintf("チャンネル復元に失敗しました: channel=%s user=%s err=%v", ts.ChannelID, uid, err))
-							}
-						} else {
-							if err := s.ChannelPermissionDelete(ts.ChannelID, uid); err != nil {
-								log.Println("ChannelPermissionDelete(unmute) failed:", err)
-								notifyAdmin(s, ts.GuildID, fmt.Sprintf("チャンネル復元(削除)に失敗しました: channel=%s user=%s err=%v", ts.ChannelID, uid, err))
-							}
-						}
-						delete(ts.savedOverwrites, uid)
-					} else {
-						// fallback: try delete
-						if err := s.ChannelPermissionDelete(ts.ChannelID, uid); err != nil {
-							log.Println("ChannelPermissionDelete(unmute) failed:", err)
-							notifyAdmin(s, ts.GuildID, fmt.Sprintf("チャンネル復元(削除-fallback)に失敗しました: channel=%s user=%s err=%v", ts.ChannelID, uid, err))
-						}
-					}
-				}
-			}
-
-			// remove session
-			timerManager.mu.Lock()
-			delete(timerManager.sessions, ts.ChannelID)
-			timerManager.mu.Unlock()
-			return
-		}
 		ts.mu.Unlock()
 	}
+}
+
+// end ends the timer session: announces, restores stored overwrites (or deletes), and removes session.
+func (ts *TimerSession) end(s *discordgo.Session, replyChannelID string) {
+	ts.mu.Lock()
+	if !ts.Active {
+		ts.mu.Unlock()
+		return
+	}
+	ts.Active = false
+	participants := make([]string, 0, len(ts.participants))
+	for uid := range ts.participants {
+		participants = append(participants, uid)
+	}
+	ts.mu.Unlock()
+
+	s.ChannelMessageSend(replyChannelID, "全体の持ち時間が終了しました。ミュート設定を解除します。")
+	// restore per-channel permission overwrites we recorded (or delete if none existed)
+	for _, uid := range participants {
+		if ts.muted[uid] {
+			if so, ok := ts.savedOverwrites[uid]; ok {
+				if so.Exists {
+					if err := s.ChannelPermissionSet(ts.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, so.Allow, so.Deny); err != nil {
+						log.Println("ChannelPermissionSet(restore) failed:", err)
+						notifyAdmin(s, ts.GuildID, fmt.Sprintf("チャンネル復元に失敗しました: channel=%s user=%s err=%v", ts.ChannelID, uid, err))
+					}
+				} else {
+					if err := s.ChannelPermissionDelete(ts.ChannelID, uid); err != nil {
+						log.Println("ChannelPermissionDelete(unmute) failed:", err)
+						notifyAdmin(s, ts.GuildID, fmt.Sprintf("チャンネル復元(削除)に失敗しました: channel=%s user=%s err=%v", ts.ChannelID, uid, err))
+					}
+				}
+				delete(ts.savedOverwrites, uid)
+			} else {
+				// fallback: try delete
+				if err := s.ChannelPermissionDelete(ts.ChannelID, uid); err != nil {
+					log.Println("ChannelPermissionDelete(unmute) failed:", err)
+					notifyAdmin(s, ts.GuildID, fmt.Sprintf("チャンネル復元(削除-fallback)に失敗しました: channel=%s user=%s err=%v", ts.ChannelID, uid, err))
+				}
+			}
+		}
+	}
+
+	// remove session
+	timerManager.mu.Lock()
+	delete(timerManager.sessions, ts.ChannelID)
+	timerManager.mu.Unlock()
 }
 
 // HandleSpeakingUpdate processes VoiceSpeakingUpdate events for active timers
@@ -487,8 +510,32 @@ func handleTimerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		sendEphemeral(s, i, "タイマーの開始に失敗しました: "+err.Error())
 		return
 	}
+}
 
-	sendEphemeral(s, i, fmt.Sprintf("タイマーを開始しました: %v", dur))
+// handleStopTimerCommand is invoked from the interaction handler in main.go
+func handleStopTimerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// find the voice channel the invoking user is currently in
+	userID := i.Member.User.ID
+	guild, _ := s.State.Guild(i.GuildID)
+	var channelID string
+	if guild != nil {
+		for _, vs := range guild.VoiceStates {
+			if vs.UserID == userID {
+				channelID = vs.ChannelID
+				break
+			}
+		}
+	}
+
+	if channelID == "" {
+		sendEphemeral(s, i, "まずボイスチャンネルに参加してからコマンドを実行してください。")
+		return
+	}
+
+	if err := timerManager.StopTimer(s, i.GuildID, channelID, i.ChannelID); err != nil {
+		sendEphemeral(s, i, "タイマーの停止に失敗しました: "+err.Error())
+		return
+	}
 }
 
 // notifyAdmin sends a plain message to the configured admin channel (best-effort).

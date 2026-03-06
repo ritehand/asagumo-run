@@ -32,6 +32,8 @@ func main() {
 				handleSenkyokuCommand(s, i)
 			case "timer":
 				handleTimerCommand(s, i)
+			case "stop_timer":
+				handleStopTimerCommand(s, i)
 			}
 		}
 	})
@@ -77,6 +79,10 @@ func main() {
 					Required:    true,
 				},
 			},
+		},
+		{
+			Name:        "stop_timer",
+			Description: "ボイスチャンネルの持ち時間制限を終了します",
 		},
 	}
 
