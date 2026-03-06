@@ -94,7 +94,7 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 		ctx:              ctx,
 		cancel:           cancel,
 		closer: func() {
-			vc.Close()
+			vc.Disconnect()
 		},
 	}
 
