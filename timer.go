@@ -9,6 +9,12 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+type SavedOverwrite struct {
+	Exists bool
+	Allow  int64
+	Deny   int64
+}
+
 type TimerSession struct {
 	GuildID   string
 	ChannelID string
@@ -20,6 +26,7 @@ type TimerSession struct {
 	allocated        map[string]time.Duration
 	participants     map[string]bool
 	muted            map[string]bool
+	savedOverwrites  map[string]SavedOverwrite
 	timers           map[string]*time.Timer
 
 	mu     sync.Mutex
@@ -65,6 +72,7 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 		allocated:        make(map[string]time.Duration),
 		participants:     make(map[string]bool),
 		muted:            make(map[string]bool),
+		savedOverwrites:  make(map[string]SavedOverwrite),
 		timers:           make(map[string]*time.Timer),
 		Active:           true,
 	}
@@ -117,11 +125,28 @@ func (ts *TimerSession) monitorTotal(s *discordgo.Session, replyChannelID string
 			ts.mu.Unlock()
 
 			s.ChannelMessageSend(replyChannelID, "全体の持ち時間が終了しました。ミュート設定を解除します。")
-			// remove per-channel permission overwrites we added
+			// restore per-channel permission overwrites we recorded (or delete if none existed)
 			for _, uid := range participants {
 				if ts.muted[uid] {
-					if err := s.ChannelPermissionDelete(ts.ChannelID, uid); err != nil {
-						log.Println("ChannelPermissionDelete(unmute) failed:", err)
+					if so, ok := ts.savedOverwrites[uid]; ok {
+						if so.Exists {
+							if err := s.ChannelPermissionSet(ts.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, so.Allow, so.Deny); err != nil {
+								log.Println("ChannelPermissionSet(restore) failed:", err)
+								notifyAdmin(s, ts.GuildID, fmt.Sprintf("チャンネル復元に失敗しました: channel=%s user=%s err=%v", ts.ChannelID, uid, err))
+							}
+						} else {
+							if err := s.ChannelPermissionDelete(ts.ChannelID, uid); err != nil {
+								log.Println("ChannelPermissionDelete(unmute) failed:", err)
+								notifyAdmin(s, ts.GuildID, fmt.Sprintf("チャンネル復元(削除)に失敗しました: channel=%s user=%s err=%v", ts.ChannelID, uid, err))
+							}
+						}
+						delete(ts.savedOverwrites, uid)
+					} else {
+						// fallback: try delete
+						if err := s.ChannelPermissionDelete(ts.ChannelID, uid); err != nil {
+							log.Println("ChannelPermissionDelete(unmute) failed:", err)
+							notifyAdmin(s, ts.GuildID, fmt.Sprintf("チャンネル復元(削除-fallback)に失敗しました: channel=%s user=%s err=%v", ts.ChannelID, uid, err))
+						}
 					}
 				}
 			}
@@ -157,7 +182,27 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 			// enforce per-channel mute for late joiners
 			session.participants[uid] = true
 			session.allocated[uid] = 0
-			// deny SPEAK permission in this channel (bit 1<<21)
+			// record existing overwrite then deny SPEAK permission in this channel (bit 1<<21)
+			if _, ok := session.savedOverwrites[uid]; !ok {
+				// try to capture existing overwrite
+				ch, err := s.Channel(session.ChannelID)
+				if err == nil {
+					found := false
+					for _, po := range ch.PermissionOverwrites {
+						if po.ID == uid && po.Type == discordgo.PermissionOverwriteTypeMember {
+							session.savedOverwrites[uid] = SavedOverwrite{Exists: true, Allow: po.Allow, Deny: po.Deny}
+							found = true
+							break
+						}
+					}
+					if !found {
+						session.savedOverwrites[uid] = SavedOverwrite{Exists: false}
+					}
+				} else {
+					// on error, mark as not existed (best-effort)
+					session.savedOverwrites[uid] = SavedOverwrite{Exists: false}
+				}
+			}
 			denySpeak := int64(1 << 21)
 			if err := s.ChannelPermissionSet(session.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err != nil {
 				log.Println("ChannelPermissionSet(mute late join) failed:", err)
@@ -189,7 +234,25 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 			if alloc > 0 {
 				remaining := alloc - used
 				if remaining <= 0 {
-					// immediate mute
+					// immediate mute — save existing overwrite first if needed
+					if _, ok := session.savedOverwrites[uid]; !ok {
+						ch, err := s.Channel(session.ChannelID)
+						if err == nil {
+							found := false
+							for _, po := range ch.PermissionOverwrites {
+								if po.ID == uid && po.Type == discordgo.PermissionOverwriteTypeMember {
+									session.savedOverwrites[uid] = SavedOverwrite{Exists: true, Allow: po.Allow, Deny: po.Deny}
+									found = true
+									break
+								}
+							}
+							if !found {
+								session.savedOverwrites[uid] = SavedOverwrite{Exists: false}
+							}
+						} else {
+							session.savedOverwrites[uid] = SavedOverwrite{Exists: false}
+						}
+					}
 					denySpeak := int64(1 << 21)
 					if err := s.ChannelPermissionSet(session.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err == nil {
 						session.muted[uid] = true
@@ -215,6 +278,34 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 					if session.muted[uidCopy] {
 						session.mu.Unlock()
 						return
+					}
+					// prepare to mute: ensure we recorded existing overwrite
+					if _, ok := session.savedOverwrites[uidCopy]; !ok {
+						// unlock while calling API
+						session.mu.Unlock()
+						ch, err := s.Channel(chID)
+						if err == nil {
+							found := false
+							for _, po := range ch.PermissionOverwrites {
+								if po.ID == uidCopy && po.Type == discordgo.PermissionOverwriteTypeMember {
+									session.mu.Lock()
+									session.savedOverwrites[uidCopy] = SavedOverwrite{Exists: true, Allow: po.Allow, Deny: po.Deny}
+									session.mu.Unlock()
+									found = true
+									break
+								}
+							}
+							if !found {
+								session.mu.Lock()
+								session.savedOverwrites[uidCopy] = SavedOverwrite{Exists: false}
+								session.mu.Unlock()
+							}
+						} else {
+							session.mu.Lock()
+							session.savedOverwrites[uidCopy] = SavedOverwrite{Exists: false}
+							session.mu.Unlock()
+						}
+						session.mu.Lock()
 					}
 					session.muted[uidCopy] = true
 					session.mu.Unlock()
@@ -248,7 +339,25 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 
 			alloc := session.allocated[uid]
 			if alloc > 0 && session.userSpeakingTime[uid] > alloc {
-				// set per-channel permission overwrite to deny speaking
+				// set per-channel permission overwrite to deny speaking (save overwrite first)
+				if _, ok := session.savedOverwrites[uid]; !ok {
+					ch, err := s.Channel(session.ChannelID)
+					if err == nil {
+						found := false
+						for _, po := range ch.PermissionOverwrites {
+							if po.ID == uid && po.Type == discordgo.PermissionOverwriteTypeMember {
+								session.savedOverwrites[uid] = SavedOverwrite{Exists: true, Allow: po.Allow, Deny: po.Deny}
+								found = true
+								break
+							}
+						}
+						if !found {
+							session.savedOverwrites[uid] = SavedOverwrite{Exists: false}
+						}
+					} else {
+						session.savedOverwrites[uid] = SavedOverwrite{Exists: false}
+					}
+				}
 				denySpeak := int64(1 << 21)
 				if err := s.ChannelPermissionSet(session.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err == nil {
 					session.muted[uid] = true
@@ -296,13 +405,31 @@ func (tm *TimerManager) HandleVoiceStateUpdate(s *discordgo.Session, vs *discord
 	// mark as participant with zero allocation and mute in-channel
 	session.participants[uid] = true
 	session.allocated[uid] = 0
+	// save existing overwrite first (best-effort)
+	if _, ok := session.savedOverwrites[uid]; !ok {
+		ch, err := s.Channel(session.ChannelID)
+		if err == nil {
+			found := false
+			for _, po := range ch.PermissionOverwrites {
+				if po.ID == uid && po.Type == discordgo.PermissionOverwriteTypeMember {
+					session.savedOverwrites[uid] = SavedOverwrite{Exists: true, Allow: po.Allow, Deny: po.Deny}
+					found = true
+					break
+				}
+			}
+			if !found {
+				session.savedOverwrites[uid] = SavedOverwrite{Exists: false}
+			}
+		} else {
+			session.savedOverwrites[uid] = SavedOverwrite{Exists: false}
+		}
+	}
 	denySpeak := int64(1 << 21)
 	if err := s.ChannelPermissionSet(session.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err != nil {
 		log.Println("ChannelPermissionSet(mute on join) failed:", err)
 		return
 	}
 	session.muted[uid] = true
-	// s.ChannelMessageSend(session.ChannelID, fmt.Sprintf("<@%s> さんが途中参加したためミュートしました。", uid))
 }
 
 // handleTimerCommand is invoked from the interaction handler in main.go
@@ -351,4 +478,22 @@ func handleTimerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	sendEphemeral(s, i, fmt.Sprintf("タイマーを開始しました: %v", dur))
+}
+
+// notifyAdmin sends a plain message to the configured admin channel (best-effort).
+func notifyAdmin(s *discordgo.Session, guildID, msg string) {
+	// Prefer guild's system channel if available
+	if guildID != "" {
+		if g, _ := s.State.Guild(guildID); g != nil {
+			if g.SystemChannelID != "" {
+				if _, err := s.ChannelMessageSend(g.SystemChannelID, msg); err == nil {
+					return
+				} else {
+					log.Println("notifyAdmin: send to system channel failed:", err)
+				}
+			}
+		}
+	}
+	// Final fallback: log
+	log.Println("notifyAdmin: no admin channel available; message:", msg)
 }
