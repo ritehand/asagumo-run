@@ -70,15 +70,15 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 		return fmt.Errorf("ボイスチャンネルに参加しているユーザーがいません")
 	}
 
-	vc, err := s.ChannelVoiceJoin(guildID, channelID, true, false)
+	ctx, cancel := context.WithTimeout(context.Background(), total)
+
+	vc, err := s.ChannelVoiceJoin(ctx, guildID, channelID, true, false)
 	if err != nil {
 		return err
 	}
 	vc.AddHandler(func(_ *discordgo.VoiceConnection, vs *discordgo.VoiceSpeakingUpdate) {
 		timerManager.HandleSpeakingUpdate(s, vs)
 	})
-
-	ctx, cancel := context.WithTimeout(context.Background(), total)
 
 	session := &TimerSession{
 		Connection:       vc,
@@ -200,8 +200,8 @@ func (ts *TimerSession) end(s *discordgo.Session, replyChannelID string) {
 			}
 		}
 	}
+	ts.Connection.Disconnect(ts.ctx)
 	ts.cancel()
-	ts.Connection.Disconnect()
 
 	// remove session
 	timerManager.mu.Lock()
