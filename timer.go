@@ -53,6 +53,9 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 	if guild != nil {
 		for _, vs := range guild.VoiceStates {
 			if vs.ChannelID == channelID && vs.UserID != s.State.User.ID {
+				if isBot(s, guildID, vs.UserID) {
+					continue
+				}
 				participants = append(participants, vs.UserID)
 			}
 		}
@@ -176,6 +179,11 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 
 	for _, session := range sessions {
 		session.mu.Lock()
+		// skip bot users (per-session guild)
+		if isBot(s, session.GuildID, uid) {
+			session.mu.Unlock()
+			continue
+		}
 		// process only if the user is tracked in this session
 		// If user is not part of participants set, they may have joined mid-session.
 		if !session.participants[uid] {
@@ -381,6 +389,9 @@ func (tm *TimerManager) HandleVoiceStateUpdate(s *discordgo.Session, vs *discord
 	if vs.UserID == s.State.User.ID {
 		return
 	}
+	if isBot(s, vs.GuildID, vs.UserID) {
+		return
+	}
 
 	// if user left a channel, ChannelID may be empty — only handle joins
 	if vs.ChannelID == "" {
@@ -496,4 +507,22 @@ func notifyAdmin(s *discordgo.Session, guildID, msg string) {
 	}
 	// Final fallback: log
 	log.Println("notifyAdmin: no admin channel available; message:", msg)
+}
+
+// isBot attempts to determine whether a user is a bot/accounted-as-app.
+// It prefers cached state, falling back to API where necessary. If unknown,
+// it returns false (treat as human) to avoid false exclusions.
+func isBot(s *discordgo.Session, guildID, userID string) bool {
+	// try state member first
+	if guildID != "" {
+		if m, err := s.State.Member(guildID, userID); err == nil && m != nil && m.User != nil {
+			return m.User.Bot
+		}
+	}
+	// fallback to cached user
+	if u, err := s.User(userID); err == nil && u != nil {
+		return u.Bot
+	}
+	// if we can't determine, assume not a bot
+	return false
 }
