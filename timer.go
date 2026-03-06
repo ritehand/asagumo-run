@@ -83,6 +83,7 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 		savedOverwrites:  make(map[string]SavedOverwrite),
 		timers:           make(map[string]*time.Timer),
 		Active:           true,
+		ctx:              ctx,
 		cancel:           cancel,
 	}
 
@@ -92,11 +93,12 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 		session.allocated[u] = per
 	}
 
+	go session.monitorTotal()
+	log.Printf("go session.monitorTotal() on %s\n", channelID)
+
 	tm.sessions[channelID] = session
 
 	s.ChannelMessageSend(replyChannelID, fmt.Sprintf("タイマーを開始しました。合計 %v、参加者 %d、各自割当 %v", total, len(participants), per))
-
-	go session.monitorTotal(ctx)
 
 	return nil
 }
@@ -112,12 +114,13 @@ func (tm *TimerManager) StopTimer(s *discordgo.Session, guildID, channelID, repl
 	}
 }
 
-func (ts *TimerSession) monitorTotal(ctx context.Context) {
+func (ts *TimerSession) monitorTotal() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-ctx.Done():
+		case <-ts.ctx.Done():
+			log.Printf("go session.monitorTotal() ends on %s\n", ts.ChannelID)
 			return
 		case <-ticker.C:
 			ts.mu.Lock()
@@ -517,7 +520,7 @@ func handleTimerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		sendEphemeral(s, i, "タイマーの開始に失敗しました: "+err.Error())
 		return
 	}
-	sendEphemeral(s, i, "タイマーを停止します...")
+	sendEphemeral(s, i, "タイマーを開始します...")
 }
 
 // handleStopTimerCommand is invoked from the interaction handler in main.go
@@ -544,7 +547,7 @@ func handleStopTimerCommand(s *discordgo.Session, i *discordgo.InteractionCreate
 		sendEphemeral(s, i, "タイマーの停止に失敗しました: "+err.Error())
 		return
 	}
-	sendEphemeral(s, i, "タイマーを開始します...")
+	sendEphemeral(s, i, "タイマーを停止します...")
 }
 
 // notifyAdmin sends a plain message to the configured admin channel (best-effort).
