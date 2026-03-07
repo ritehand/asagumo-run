@@ -155,9 +155,10 @@ func (tm *TimerManager) ListTimer(s *discordgo.Session, guildID, channelID, repl
 				}
 			}
 		}
+		remain := session.Total - time.Since(session.Start)
 		embed := &discordgo.MessageEmbed{
 			Title:       "残りの持ち時間",
-			Description: fmt.Sprintf("参加者数: %d", len(fields)),
+			Description: fmt.Sprintf("全体の残り時間: %v", remain),
 			Color:       0x00ff00,
 			Fields:      fields,
 			Footer: &discordgo.MessageEmbedFooter{
