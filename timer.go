@@ -116,18 +116,6 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 		Title:       "タイマーを開始しました",
 		Description: fmt.Sprintf("合計 %v、参加者 %d、各自割当 %v", total, len(participants), per),
 		Color:       0x00ff00,
-		// Fields: []*discordgo.MessageEmbedField{
-		// 	{
-		// 		Name:   "項目1",
-		// 		Value:  "内容1",
-		// 		Inline: true,
-		// 	},
-		// 	{
-		// 		Name:   "項目2",
-		// 		Value:  "内容2",
-		// 		Inline: true,
-		// 	},
-		// },
 		Footer: &discordgo.MessageEmbedFooter{
 			Text: fmt.Sprintf("version: %s", version),
 		},
@@ -157,6 +145,7 @@ func (tm *TimerManager) ListTimer(s *discordgo.Session, guildID, channelID, repl
 	if session, ok := tm.sessions[channelID]; ok {
 		fields := make([]*discordgo.MessageEmbedField, 0)
 		for uid, ok := range session.participants {
+			log.Printf("range session.participants: uid:%s ok:%t\n", uid, ok)
 			if ok {
 				if user, err := session.Session.User(uid); err != nil && !user.Bot {
 					fields = append(fields, &discordgo.MessageEmbedField{
@@ -169,7 +158,7 @@ func (tm *TimerManager) ListTimer(s *discordgo.Session, guildID, channelID, repl
 		}
 		embed := &discordgo.MessageEmbed{
 			Title:       "残りの持ち時間",
-			Description: fmt.Sprintf("参加者数: <@%d>", len(fields)),
+			Description: fmt.Sprintf("参加者数: %d", len(fields)),
 			Color:       0x00ff00,
 			Fields:      fields,
 			Footer: &discordgo.MessageEmbedFooter{
@@ -214,18 +203,6 @@ func (ts *TimerSession) exit() {
 		Title:       "全体の持ち時間が終了しました",
 		Description: "ミュート設定を解除します",
 		Color:       0xff0000,
-		// Fields: []*discordgo.MessageEmbedField{
-		// 	{
-		// 		Name:   "項目1",
-		// 		Value:  "内容1",
-		// 		Inline: true,
-		// 	},
-		// 	{
-		// 		Name:   "項目2",
-		// 		Value:  "内容2",
-		// 		Inline: true,
-		// 	},
-		// },
 		Footer: &discordgo.MessageEmbedFooter{
 			Text: fmt.Sprintf("version: %s", version),
 		},
@@ -329,18 +306,6 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 					Title:       fmt.Sprintf("途中参加: <@%s> さん", uid),
 					Description: fmt.Sprintf("<@%s> さんは途中参加のためミュートしました", uid),
 					Color:       0xffff00,
-					// Fields: []*discordgo.MessageEmbedField{
-					// 	{
-					// 		Name:   "項目1",
-					// 		Value:  "内容1",
-					// 		Inline: true,
-					// 	},
-					// 	{
-					// 		Name:   "項目2",
-					// 		Value:  "内容2",
-					// 		Inline: true,
-					// 	},
-					// },
 					Footer: &discordgo.MessageEmbedFooter{
 						Text: fmt.Sprintf("version: %s", version),
 					},
@@ -401,18 +366,6 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 							Title:       fmt.Sprintf("時間超過: <@%s> さん", uid),
 							Description: fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました。", uid),
 							Color:       0xffff00,
-							// Fields: []*discordgo.MessageEmbedField{
-							// 	{
-							// 		Name:   "項目1",
-							// 		Value:  "内容1",
-							// 		Inline: true,
-							// 	},
-							// 	{
-							// 		Name:   "項目2",
-							// 		Value:  "内容2",
-							// 		Inline: true,
-							// 	},
-							// },
 							Footer: &discordgo.MessageEmbedFooter{
 								Text: fmt.Sprintf("version: %s", version),
 							},
@@ -482,18 +435,6 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 							Title:       fmt.Sprintf("時間超過: <@%s> さん", uid),
 							Description: fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました", uid),
 							Color:       0xffff00,
-							// Fields: []*discordgo.MessageEmbedField{
-							// 	{
-							// 		Name:   "項目1",
-							// 		Value:  "内容1",
-							// 		Inline: true,
-							// 	},
-							// 	{
-							// 		Name:   "項目2",
-							// 		Value:  "内容2",
-							// 		Inline: true,
-							// 	},
-							// },
 							Footer: &discordgo.MessageEmbedFooter{
 								Text: fmt.Sprintf("version: %s", version),
 							},
@@ -554,18 +495,6 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 						Title:       fmt.Sprintf("時間超過: <@%s> さん", uid),
 						Description: fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました", uid),
 						Color:       0xffff00,
-						// Fields: []*discordgo.MessageEmbedField{
-						// 	{
-						// 		Name:   "項目1",
-						// 		Value:  "内容1",
-						// 		Inline: true,
-						// 	},
-						// 	{
-						// 		Name:   "項目2",
-						// 		Value:  "内容2",
-						// 		Inline: true,
-						// 	},
-						// },
 						Footer: &discordgo.MessageEmbedFooter{
 							Text: fmt.Sprintf("version: %s", version),
 						},
@@ -742,10 +671,10 @@ func handleListTimerCommand(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 
 	if err := timerManager.ListTimer(s, i.GuildID, channelID, i.ChannelID); err != nil {
-		sendEphemeral(s, i, "タイマーの表示に失敗しました: "+err.Error())
+		sendEphemeral(s, i, "持ち時間の表示に失敗しました: "+err.Error())
 		return
 	}
-	sendEphemeral(s, i, "タイマーを表示します…")
+	sendEphemeral(s, i, "持ち時間を表示します…")
 }
 
 // notifyAdmin sends a plain message to the configured admin channel (best-effort).
