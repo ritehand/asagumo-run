@@ -108,7 +108,6 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 	}
 
 	go session.start()
-	log.Printf("monitorTotal launched: %s\n", channelID)
 
 	tm.sessions[channelID] = session
 
@@ -129,6 +128,7 @@ func (tm *TimerManager) StopTimer(s *discordgo.Session, guildID, channelID, repl
 }
 
 func (ts *TimerSession) start() {
+	log.Printf("timer starts %s\n", ts.ChannelID)
 	for range ts.ctx.Done() {
 		log.Printf("timer canceled: %s\n", ts.ChannelID)
 		ts.exit()

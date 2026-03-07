@@ -2,7 +2,7 @@ module github.com/ritehand/asagumo-run
 
 go 1.24.0
 
-replace github.com/bwmarrin/discordgo => github.com/yeongaori/discordgo v0.0.0-20260306153015-18626399181b
+replace github.com/bwmarrin/discordgo => github.com/yeongaori/discordgo-fork v0.0.0-20260306153015-18626399181b
 
 require (
 	github.com/bwmarrin/discordgo v0.29.0

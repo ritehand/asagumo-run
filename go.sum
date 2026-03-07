@@ -4,8 +4,8 @@ github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aN
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/ritehand/asagumo v0.1.1 h1:UigUvpDwWF24RxGdx8PRtck5NEO+tBeAw18VuFzmSj0=
 github.com/ritehand/asagumo v0.1.1/go.mod h1:GPKJBh9igdhd4DTRtJgtCNrpauooJvEN1Xhx1XFFI3w=
-github.com/yeongaori/discordgo v0.0.0-20260306153015-18626399181b h1:g4o3q6Zar5/eCC8o1Vz9opzYHxD+i3/8Buh6I4WrRNg=
-github.com/yeongaori/discordgo v0.0.0-20260306153015-18626399181b/go.mod h1:A0FcMFJKJ9fRjgSuZ2o+pIQ6mPS81SVuiLN2vYTa7Ao=
+github.com/yeongaori/discordgo-fork v0.0.0-20260306153015-18626399181b h1:JJbAyYc+HSdlpIjECTwIjjl9M5J04ztYUCGbVHgTyLY=
+github.com/yeongaori/discordgo-fork v0.0.0-20260306153015-18626399181b/go.mod h1:A0FcMFJKJ9fRjgSuZ2o+pIQ6mPS81SVuiLN2vYTa7Ao=
 golang.org/x/crypto v0.48.0 h1:/VRzVqiRSggnhY7gNRxPauEQ5Drw9haKdM0jqfcCFts=
 golang.org/x/crypto v0.48.0/go.mod h1:r0kV5h3qnFPlQnBSrULhlsRfryS2pmewsg+XfMgkVos=
 golang.org/x/sys v0.41.0 h1:Ivj+2Cp/ylzLiEU89QhWblYnOE9zerudt9Ftecq2C6k=
