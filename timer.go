@@ -147,15 +147,16 @@ func (tm *TimerManager) ListTimer(s *discordgo.Session, guildID, channelID, repl
 		for uid, ok := range session.participants {
 			if ok {
 				if user, err := session.Session.User(uid); err == nil {
+					userRemain := (session.allocated[uid] - session.userSpeakingTime[uid]).Round(time.Second)
 					fields = append(fields, &discordgo.MessageEmbedField{
 						Name:   user.Username,
-						Value:  fmt.Sprintf("%v", session.allocated[uid]-session.userSpeakingTime[uid]),
+						Value:  fmt.Sprintf("%v", userRemain),
 						Inline: true,
 					})
 				}
 			}
 		}
-		remain := session.Total - time.Since(session.Start)
+		remain := (session.Total - time.Since(session.Start)).Round(time.Second)
 		embed := &discordgo.MessageEmbed{
 			Title:       "残りの持ち時間",
 			Description: fmt.Sprintf("全体の残り時間: %v", remain),
