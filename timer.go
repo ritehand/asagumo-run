@@ -111,7 +111,19 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 
 	tm.sessions[channelID] = session
 
-	s.ChannelMessageSend(replyChannelID, fmt.Sprintf("タイマーを開始しました。合計 %v、参加者 %d、各自割当 %v", total, len(participants), per))
+	// s.ChannelMessageSend(replyChannelID, fmt.Sprintf("タイマーを開始しました。合計 %v、参加者 %d、各自割当 %v", total, len(participants), per))
+	embed := &discordgo.MessageEmbed{
+		Title:       "タイマーを開始しました",
+		Description: fmt.Sprintf("合計 %v、参加者 %d、各自割当 %v", total, len(participants), per),
+		Color:       0x00ff00,
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: fmt.Sprintf("version: %s", version),
+		},
+	}
+	_, err = s.ChannelMessageSendEmbed(channelID, embed)
+	if err != nil {
+		fmt.Println("Embedの送信に失敗しました:", err)
+	}
 
 	return nil
 }

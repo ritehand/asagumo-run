@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 
 	"github.com/bwmarrin/discordgo"
@@ -17,7 +18,12 @@ const (
 	optionNameDuration = `全体時間`
 )
 
+var version string
+
 func main() {
+	if buildInfo, ok := debug.ReadBuildInfo(); ok {
+		version = buildInfo.Main.Version
+	}
 	s, err := discordgo.New("Bot " + bot.Token)
 	if err != nil {
 		log.Fatalln(err)
