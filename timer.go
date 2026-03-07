@@ -655,7 +655,7 @@ func handleTimerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		sendEphemeral(s, i, "タイマーの開始に失敗しました: "+err.Error())
 		return
 	}
-	sendEphemeral(s, i, "タイマーを開始します...")
+	sendNil(s, i)
 }
 
 // handleStopTimerCommand is invoked from the interaction handler in main.go
@@ -683,6 +683,33 @@ func handleStopTimerCommand(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 	sendEphemeral(s, i, "タイマーを停止します...")
+}
+
+// handleListTimerCommand is invoked from the interaction handler in main.go
+func handleListTimerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// find the voice channel the invoking user is currently in
+	userID := i.Member.User.ID
+	guild, _ := s.State.Guild(i.GuildID)
+	var channelID string
+	if guild != nil {
+		for _, vs := range guild.VoiceStates {
+			if vs.UserID == userID {
+				channelID = vs.ChannelID
+				break
+			}
+		}
+	}
+
+	if channelID == "" {
+		sendEphemeral(s, i, "まずボイスチャンネルに参加してからコマンドを実行してください。")
+		return
+	}
+
+	if err := timerManager.StopTimer(s, i.GuildID, channelID, i.ChannelID); err != nil {
+		sendEphemeral(s, i, "タイマーの停止に失敗しました: "+err.Error())
+		return
+	}
+	sendNil(s, i)
 }
 
 // notifyAdmin sends a plain message to the configured admin channel (best-effort).
