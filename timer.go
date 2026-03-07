@@ -655,7 +655,7 @@ func handleTimerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		sendEphemeral(s, i, "タイマーの開始に失敗しました: "+err.Error())
 		return
 	}
-	sendNil(s, i)
+	sendEphemeral(s, i, "")
 }
 
 // handleStopTimerCommand is invoked from the interaction handler in main.go
