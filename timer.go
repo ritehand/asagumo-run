@@ -145,14 +145,16 @@ func (tm *TimerManager) ListTimer(s *discordgo.Session, guildID, channelID, repl
 	if session, ok := tm.sessions[channelID]; ok {
 		fields := make([]*discordgo.MessageEmbedField, 0)
 		for uid, ok := range session.participants {
-			log.Printf("range session.participants: uid:%s ok:%t\n", uid, ok)
 			if ok {
 				if user, err := session.Session.User(uid); err != nil && !user.Bot {
+					log.Printf("user found: %s\n", user.Username)
 					fields = append(fields, &discordgo.MessageEmbedField{
 						Name:   user.Username,
 						Value:  fmt.Sprintf("%v", session.userSpeakingTime[uid]),
 						Inline: true,
 					})
+				} else {
+					log.Printf("error on session.Session.User(uid): %s\n", err)
 				}
 			}
 		}
