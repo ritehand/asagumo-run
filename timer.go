@@ -17,6 +17,7 @@ type SavedOverwrite struct {
 }
 
 type TimerSession struct {
+	Session    *discordgo.Session
 	Connection *discordgo.VoiceConnection
 	GuildID    string
 	ChannelID  string
@@ -82,6 +83,7 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 	})
 
 	session := &TimerSession{
+		Session:          s,
 		Connection:       vc,
 		GuildID:          guildID,
 		ChannelID:        channelID,
@@ -105,8 +107,8 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 		session.allocated[u] = per
 	}
 
-	go session.monitorTotal()
-	log.Printf("go session.monitorTotal() on %s\n", channelID)
+	go session.start()
+	log.Printf("monitorTotal launched: %s\n", channelID)
 
 	tm.sessions[channelID] = session
 
@@ -119,50 +121,23 @@ func (tm *TimerManager) StopTimer(s *discordgo.Session, guildID, channelID, repl
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	if session, ok := tm.sessions[channelID]; ok {
-		session.end(s, replyChannelID)
+		session.exit()
 		return nil
 	} else {
 		return fmt.Errorf("このチャンネルでは現在タイマーが作動していません")
 	}
 }
 
-func (ts *TimerSession) monitorTotal() {
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ts.ctx.Done():
-			log.Printf("go session.monitorTotal() ends on %s\n", ts.ChannelID)
-			return
-		case <-ticker.C:
-			ts.mu.Lock()
-			// compute total used
-			var sum time.Duration
-			for uid, d := range ts.userSpeakingTime {
-				sum += d
-				// if currently speaking, include running segment
-				if start, ok := ts.lastStart[uid]; ok && !start.IsZero() {
-					sum += time.Since(start)
-				}
-			}
-			// also consider users who have lastStart but no userSpeakingTime entry yet
-			for uid, start := range ts.lastStart {
-				if start.IsZero() {
-					continue
-				}
-				if _, ok := ts.userSpeakingTime[uid]; !ok {
-					sum += time.Since(start)
-				}
-			}
-
-			ts.mu.Unlock()
-
-		}
+func (ts *TimerSession) start() {
+	for range ts.ctx.Done() {
+		log.Printf("timer canceled: %s\n", ts.ChannelID)
+		ts.exit()
+		return
 	}
 }
 
-// end ends the timer session: announces, restores stored overwrites (or deletes), and removes session.
-func (ts *TimerSession) end(s *discordgo.Session, replyChannelID string) {
+// exit ends the timer session: announces, restores stored overwrites (or deletes), and removes session.
+func (ts *TimerSession) exit() {
 	ts.mu.Lock()
 	if !ts.Active {
 		ts.mu.Unlock()
@@ -175,39 +150,39 @@ func (ts *TimerSession) end(s *discordgo.Session, replyChannelID string) {
 	}
 	ts.mu.Unlock()
 
-	s.ChannelMessageSend(replyChannelID, "全体の持ち時間が終了しました。ミュート設定を解除します。")
+	ts.Session.ChannelMessageSend(ts.ChannelID, "全体の持ち時間が終了しました。ミュート設定を解除します。")
 	// restore per-channel permission overwrites we recorded (or delete if none existed)
 	for _, uid := range participants {
 		if ts.muted[uid] {
 			if so, ok := ts.savedOverwrites[uid]; ok {
 				if so.Exists {
-					if err := s.ChannelPermissionSet(ts.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, so.Allow, so.Deny); err != nil {
+					if err := ts.Session.ChannelPermissionSet(ts.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, so.Allow, so.Deny); err != nil {
 						log.Println("ChannelPermissionSet(restore) failed:", err)
-						notifyAdmin(s, ts.GuildID, fmt.Sprintf("チャンネル復元に失敗しました: channel=%s user=%s err=%v", ts.ChannelID, uid, err))
+						notifyAdmin(ts.Session, ts.GuildID, fmt.Sprintf("チャンネル復元に失敗しました: channel=%s user=%s err=%v", ts.ChannelID, uid, err))
 					}
 				} else {
-					if err := s.ChannelPermissionDelete(ts.ChannelID, uid); err != nil {
+					if err := ts.Session.ChannelPermissionDelete(ts.ChannelID, uid); err != nil {
 						log.Println("ChannelPermissionDelete(unmute) failed:", err)
-						notifyAdmin(s, ts.GuildID, fmt.Sprintf("チャンネル復元(削除)に失敗しました: channel=%s user=%s err=%v", ts.ChannelID, uid, err))
+						notifyAdmin(ts.Session, ts.GuildID, fmt.Sprintf("チャンネル復元(削除)に失敗しました: channel=%s user=%s err=%v", ts.ChannelID, uid, err))
 					}
 				}
 				delete(ts.savedOverwrites, uid)
 			} else {
 				// fallback: try delete
-				if err := s.ChannelPermissionDelete(ts.ChannelID, uid); err != nil {
+				if err := ts.Session.ChannelPermissionDelete(ts.ChannelID, uid); err != nil {
 					log.Println("ChannelPermissionDelete(unmute) failed:", err)
-					notifyAdmin(s, ts.GuildID, fmt.Sprintf("チャンネル復元(削除-fallback)に失敗しました: channel=%s user=%s err=%v", ts.ChannelID, uid, err))
+					notifyAdmin(ts.Session, ts.GuildID, fmt.Sprintf("チャンネル復元(削除-fallback)に失敗しました: channel=%s user=%s err=%v", ts.ChannelID, uid, err))
 				}
 			}
 		}
 	}
-	ts.cancel()
 	ts.Connection.Disconnect(ts.ctx)
 
 	// remove session
 	timerManager.mu.Lock()
 	delete(timerManager.sessions, ts.ChannelID)
 	timerManager.mu.Unlock()
+	log.Printf("timer exits: %s\n", ts.ChannelID)
 }
 
 // HandleSpeakingUpdate processes VoiceSpeakingUpdate events for active timers
