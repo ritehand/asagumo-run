@@ -116,6 +116,18 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 		Title:       "タイマーを開始しました",
 		Description: fmt.Sprintf("合計 %v、参加者 %d、各自割当 %v", total, len(participants), per),
 		Color:       0x00ff00,
+		// Fields: []*discordgo.MessageEmbedField{
+		// 	{
+		// 		Name:   "項目1",
+		// 		Value:  "内容1",
+		// 		Inline: true,
+		// 	},
+		// 	{
+		// 		Name:   "項目2",
+		// 		Value:  "内容2",
+		// 		Inline: true,
+		// 	},
+		// },
 		Footer: &discordgo.MessageEmbedFooter{
 			Text: fmt.Sprintf("version: %s", version),
 		},
@@ -161,7 +173,31 @@ func (ts *TimerSession) exit() {
 	}
 	ts.mu.Unlock()
 
-	ts.Session.ChannelMessageSend(ts.ChannelID, "全体の持ち時間が終了しました。ミュート設定を解除します。")
+	// ts.Session.ChannelMessageSend(ts.ChannelID, "全体の持ち時間が終了しました。ミュート設定を解除します。")
+	embed := &discordgo.MessageEmbed{
+		Title:       "全体の持ち時間が終了しました",
+		Description: "ミュート設定を解除します",
+		Color:       0xff0000,
+		// Fields: []*discordgo.MessageEmbedField{
+		// 	{
+		// 		Name:   "項目1",
+		// 		Value:  "内容1",
+		// 		Inline: true,
+		// 	},
+		// 	{
+		// 		Name:   "項目2",
+		// 		Value:  "内容2",
+		// 		Inline: true,
+		// 	},
+		// },
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: fmt.Sprintf("version: %s", version),
+		},
+	}
+	_, err := ts.Session.ChannelMessageSendEmbed(ts.ChannelID, embed)
+	if err != nil {
+		fmt.Println("Embedの送信に失敗しました:", err)
+	}
 	// restore per-channel permission overwrites we recorded (or delete if none existed)
 	for _, uid := range participants {
 		if ts.muted[uid] {
@@ -252,7 +288,31 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 				log.Println("ChannelPermissionSet(mute late join) failed:", err)
 			} else {
 				session.muted[uid] = true
-				s.ChannelMessageSend(session.ChannelID, fmt.Sprintf("<@%s> さんは途中参加のためミュートしました。", uid))
+				// s.ChannelMessageSend(session.ChannelID, fmt.Sprintf("<@%s> さんは途中参加のためミュートしました。", uid))
+				embed := &discordgo.MessageEmbed{
+					Title:       fmt.Sprintf("途中参加: <@%s> さん", uid),
+					Description: fmt.Sprintf("<@%s> さんは途中参加のためミュートしました", uid),
+					Color:       0xffff00,
+					// Fields: []*discordgo.MessageEmbedField{
+					// 	{
+					// 		Name:   "項目1",
+					// 		Value:  "内容1",
+					// 		Inline: true,
+					// 	},
+					// 	{
+					// 		Name:   "項目2",
+					// 		Value:  "内容2",
+					// 		Inline: true,
+					// 	},
+					// },
+					Footer: &discordgo.MessageEmbedFooter{
+						Text: fmt.Sprintf("version: %s", version),
+					},
+				}
+				_, err = s.ChannelMessageSendEmbed(session.ChannelID, embed)
+				if err != nil {
+					fmt.Println("Embedの送信に失敗しました:", err)
+				}
 			}
 			session.mu.Unlock()
 			continue
@@ -300,7 +360,31 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 					denySpeak := int64(1 << 21)
 					if err := s.ChannelPermissionSet(session.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err == nil {
 						session.muted[uid] = true
-						s.ChannelMessageSend(session.ChannelID, fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました。", uid))
+						// s.ChannelMessageSend(session.ChannelID, fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました。", uid))
+						embed := &discordgo.MessageEmbed{
+							Title:       fmt.Sprintf("時間超過: <@%s> さん", uid),
+							Description: fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました。", uid),
+							Color:       0xffff00,
+							// Fields: []*discordgo.MessageEmbedField{
+							// 	{
+							// 		Name:   "項目1",
+							// 		Value:  "内容1",
+							// 		Inline: true,
+							// 	},
+							// 	{
+							// 		Name:   "項目2",
+							// 		Value:  "内容2",
+							// 		Inline: true,
+							// 	},
+							// },
+							Footer: &discordgo.MessageEmbedFooter{
+								Text: fmt.Sprintf("version: %s", version),
+							},
+						}
+						_, err = s.ChannelMessageSendEmbed(session.ChannelID, embed)
+						if err != nil {
+							fmt.Println("Embedの送信に失敗しました:", err)
+						}
 					} else {
 						log.Println("ChannelPermissionSet(immediate mute) failed:", err)
 					}
@@ -357,7 +441,31 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 					// apply channel permission mute
 					denySpeak := int64(1 << 21)
 					if err := s.ChannelPermissionSet(chID, uidCopy, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err == nil {
-						s.ChannelMessageSend(chID, fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました。", uidCopy))
+						// s.ChannelMessageSend(chID, fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました。", uidCopy))
+						embed := &discordgo.MessageEmbed{
+							Title:       fmt.Sprintf("時間超過: <@%s> さん", uid),
+							Description: fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました", uid),
+							Color:       0xffff00,
+							// Fields: []*discordgo.MessageEmbedField{
+							// 	{
+							// 		Name:   "項目1",
+							// 		Value:  "内容1",
+							// 		Inline: true,
+							// 	},
+							// 	{
+							// 		Name:   "項目2",
+							// 		Value:  "内容2",
+							// 		Inline: true,
+							// 	},
+							// },
+							Footer: &discordgo.MessageEmbedFooter{
+								Text: fmt.Sprintf("version: %s", version),
+							},
+						}
+						_, err = s.ChannelMessageSendEmbed(session.ChannelID, embed)
+						if err != nil {
+							fmt.Println("Embedの送信に失敗しました:", err)
+						}
 					} else {
 						log.Println("ChannelPermissionSet(mute timer) failed:", err)
 					}
@@ -405,7 +513,31 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 				denySpeak := int64(1 << 21)
 				if err := s.ChannelPermissionSet(session.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err == nil {
 					session.muted[uid] = true
-					s.ChannelMessageSend(session.ChannelID, fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました。", uid))
+					// s.ChannelMessageSend(session.ChannelID, fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました。", uid))
+					embed := &discordgo.MessageEmbed{
+						Title:       fmt.Sprintf("時間超過: <@%s> さん", uid),
+						Description: fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました", uid),
+						Color:       0xffff00,
+						// Fields: []*discordgo.MessageEmbedField{
+						// 	{
+						// 		Name:   "項目1",
+						// 		Value:  "内容1",
+						// 		Inline: true,
+						// 	},
+						// 	{
+						// 		Name:   "項目2",
+						// 		Value:  "内容2",
+						// 		Inline: true,
+						// 	},
+						// },
+						Footer: &discordgo.MessageEmbedFooter{
+							Text: fmt.Sprintf("version: %s", version),
+						},
+					}
+					_, err = s.ChannelMessageSendEmbed(session.ChannelID, embed)
+					if err != nil {
+						fmt.Println("Embedの送信に失敗しました:", err)
+					}
 				} else {
 					log.Println("ChannelPermissionSet(mute) failed:", err)
 				}
