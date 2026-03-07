@@ -111,7 +111,6 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 
 	tm.sessions[channelID] = session
 
-	// s.ChannelMessageSend(replyChannelID, fmt.Sprintf("タイマーを開始しました。合計 %v、参加者 %d、各自割当 %v", total, len(participants), per))
 	embed := &discordgo.MessageEmbed{
 		Title:       "タイマーを開始しました",
 		Description: fmt.Sprintf("合計 %v、参加者 %d、各自割当 %v", total, len(participants), per),
@@ -199,7 +198,6 @@ func (ts *TimerSession) exit() {
 	}
 	ts.mu.Unlock()
 
-	// ts.Session.ChannelMessageSend(ts.ChannelID, "全体の持ち時間が終了しました。ミュート設定を解除します。")
 	embed := &discordgo.MessageEmbed{
 		Title:       "全体の持ち時間が終了しました",
 		Description: "ミュート設定を解除します",
@@ -302,7 +300,6 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 				log.Println("ChannelPermissionSet(mute late join) failed:", err)
 			} else {
 				session.muted[uid] = true
-				// s.ChannelMessageSend(session.ChannelID, fmt.Sprintf("<@%s> さんは途中参加のためミュートしました。", uid))
 				embed := &discordgo.MessageEmbed{
 					Title:       fmt.Sprintf("途中参加: <@%s> さん", uid),
 					Description: fmt.Sprintf("<@%s> さんは途中参加のためミュートしました", uid),
@@ -334,6 +331,8 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 				delete(session.timers, uid)
 			}
 
+			log.Printf("user speaking: %s\n", uid)
+
 			alloc := session.allocated[uid]
 			used := session.userSpeakingTime[uid]
 			// if user has no allocation or already exhausted, mute immediately
@@ -362,7 +361,6 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 					denySpeak := int64(1 << 21)
 					if err := s.ChannelPermissionSet(session.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err == nil {
 						session.muted[uid] = true
-						// s.ChannelMessageSend(session.ChannelID, fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました。", uid))
 						embed := &discordgo.MessageEmbed{
 							Title:       fmt.Sprintf("時間超過: <@%s> さん", uid),
 							Description: fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました。", uid),
@@ -431,7 +429,6 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 					// apply channel permission mute
 					denySpeak := int64(1 << 21)
 					if err := s.ChannelPermissionSet(chID, uidCopy, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err == nil {
-						// s.ChannelMessageSend(chID, fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました。", uidCopy))
 						embed := &discordgo.MessageEmbed{
 							Title:       fmt.Sprintf("時間超過: <@%s> さん", uid),
 							Description: fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました", uid),
@@ -491,7 +488,6 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 				denySpeak := int64(1 << 21)
 				if err := s.ChannelPermissionSet(session.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err == nil {
 					session.muted[uid] = true
-					// s.ChannelMessageSend(session.ChannelID, fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました。", uid))
 					embed := &discordgo.MessageEmbed{
 						Title:       fmt.Sprintf("時間超過: <@%s> さん", uid),
 						Description: fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました", uid),
