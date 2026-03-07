@@ -201,8 +201,8 @@ func (ts *TimerSession) end(s *discordgo.Session, replyChannelID string) {
 			}
 		}
 	}
-	ts.Connection.Disconnect(ts.ctx)
 	ts.cancel()
+	ts.Connection.Disconnect(ts.ctx)
 
 	// remove session
 	timerManager.mu.Lock()
