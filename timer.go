@@ -32,8 +32,8 @@ type TimerSession struct {
 	savedOverwrites  map[string]SavedOverwrite
 	timers           map[string]*time.Timer
 
-	mu     sync.Mutex
-	ctx    context.Context
+	mu sync.Mutex
+	// ctx    context.Context
 	cancel context.CancelFunc
 	Active bool
 }
@@ -97,8 +97,8 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 		savedOverwrites:  make(map[string]SavedOverwrite),
 		timers:           make(map[string]*time.Timer),
 		Active:           true,
-		ctx:              ctx,
-		cancel:           cancel,
+		// ctx:              ctx,
+		cancel: cancel,
 	}
 
 	per := total / time.Duration(len(participants))
@@ -107,7 +107,7 @@ func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, rep
 		session.allocated[u] = per
 	}
 
-	go session.start()
+	go session.start(ctx)
 
 	tm.sessions[channelID] = session
 
@@ -120,16 +120,16 @@ func (tm *TimerManager) StopTimer(s *discordgo.Session, guildID, channelID, repl
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	if session, ok := tm.sessions[channelID]; ok {
-		session.exit()
+		session.cancel()
 		return nil
 	} else {
 		return fmt.Errorf("このチャンネルでは現在タイマーが作動していません")
 	}
 }
 
-func (ts *TimerSession) start() {
+func (ts *TimerSession) start(ctx context.Context) {
 	log.Printf("timer starts %s\n", ts.ChannelID)
-	for range ts.ctx.Done() {
+	for range ctx.Done() {
 		log.Printf("timer canceled: %s\n", ts.ChannelID)
 		ts.exit()
 		return
@@ -176,7 +176,11 @@ func (ts *TimerSession) exit() {
 			}
 		}
 	}
-	ts.Connection.Disconnect(ts.ctx)
+	if err := ts.Connection.Disconnect(context.Background()); err != nil {
+		log.Println("Connection.Disconnect failed:", err)
+		notifyAdmin(ts.Session, ts.GuildID, fmt.Sprintf("Connection.Disconnectに失敗しました: channel=%s err=%v", ts.ChannelID, err))
+
+	}
 
 	// remove session
 	timerManager.mu.Lock()
