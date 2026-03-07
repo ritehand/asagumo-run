@@ -149,7 +149,7 @@ func (tm *TimerManager) ListTimer(s *discordgo.Session, guildID, channelID, repl
 				if user, err := session.Session.User(uid); err == nil {
 					fields = append(fields, &discordgo.MessageEmbedField{
 						Name:   user.Username,
-						Value:  fmt.Sprintf("%v", session.userSpeakingTime[uid]),
+						Value:  fmt.Sprintf("%v", session.allocated[uid]-session.userSpeakingTime[uid]),
 						Inline: true,
 					})
 				}
