@@ -151,6 +151,42 @@ func (tm *TimerManager) StopTimer(s *discordgo.Session, guildID, channelID, repl
 	}
 }
 
+func (tm *TimerManager) ListTimer(s *discordgo.Session, guildID, channelID, replyChannelID string) error {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	if session, ok := tm.sessions[channelID]; ok {
+		fields := make([]*discordgo.MessageEmbedField, 0)
+		for uid, ok := range session.participants {
+			if ok {
+				if user, err := session.Session.User(uid); err != nil && !user.Bot {
+					fields = append(fields, &discordgo.MessageEmbedField{
+						Name:   user.Username,
+						Value:  fmt.Sprintf("%v", session.userSpeakingTime[uid]),
+						Inline: true,
+					})
+				}
+			}
+		}
+		embed := &discordgo.MessageEmbed{
+			Title:       "残りの持ち時間",
+			Description: fmt.Sprintf("参加者数: <@%d>", len(fields)),
+			Color:       0x00ff00,
+			Fields:      fields,
+			Footer: &discordgo.MessageEmbedFooter{
+				Text: fmt.Sprintf("version: %s", version),
+			},
+		}
+		_, err := s.ChannelMessageSendEmbed(session.ChannelID, embed)
+		if err != nil {
+			fmt.Println("Embedの送信に失敗しました:", err)
+		}
+
+		return nil
+	} else {
+		return fmt.Errorf("このチャンネルでは現在タイマーが作動していません")
+	}
+}
+
 func (ts *TimerSession) start(ctx context.Context) {
 	log.Printf("timer starts %s\n", ts.ChannelID)
 	<-ctx.Done()
@@ -655,7 +691,7 @@ func handleTimerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		sendEphemeral(s, i, "タイマーの開始に失敗しました: "+err.Error())
 		return
 	}
-	// sendEphemeral(s, i, "タイマーを開始します…")
+	sendEphemeral(s, i, "タイマーを開始します…")
 }
 
 // handleStopTimerCommand is invoked from the interaction handler in main.go
@@ -705,8 +741,8 @@ func handleListTimerCommand(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
-	if err := timerManager.StopTimer(s, i.GuildID, channelID, i.ChannelID); err != nil {
-		sendEphemeral(s, i, "タイマーの停止に失敗しました: "+err.Error())
+	if err := timerManager.ListTimer(s, i.GuildID, channelID, i.ChannelID); err != nil {
+		sendEphemeral(s, i, "タイマーの表示に失敗しました: "+err.Error())
 		return
 	}
 	sendEphemeral(s, i, "タイマーを表示します…")

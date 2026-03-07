@@ -40,6 +40,8 @@ func main() {
 				handleTimerCommand(s, i)
 			case "stop_timer":
 				handleStopTimerCommand(s, i)
+			case "list_timer":
+				handleListTimerCommand(s, i)
 			}
 		}
 	})
@@ -63,26 +65,30 @@ func main() {
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
 					Name:        optionNameSenkyoku,
-					Description: "例：1区の場合「1」または「1区」を入力",
+					Description: "例: 1区の場合「1」または「1区」を入力",
 					Required:    true,
 				},
 			},
 		},
 		{
 			Name:        "timer",
-			Description: "ボイスチャンネルの持ち時間制限を開始します（例: /timer duration:30m）",
+			Description: "タイマーを開始します",
 			Options: []*discordgo.ApplicationCommandOption{
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
 					Name:        optionNameDuration,
-					Description: "合計持ち時間（例: 30m, 1h）",
+					Description: "例: 「30m」、「1h」、「40s」",
 					Required:    true,
 				},
 			},
 		},
 		{
 			Name:        "stop_timer",
-			Description: "ボイスチャンネルの持ち時間制限を終了します",
+			Description: "タイマーを終了します",
+		},
+		{
+			Name:        "list_timer",
+			Description: "残りの持ち時間を表示します",
 		},
 	}
 
