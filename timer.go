@@ -129,11 +129,10 @@ func (tm *TimerManager) StopTimer(s *discordgo.Session, guildID, channelID, repl
 
 func (ts *TimerSession) start(ctx context.Context) {
 	log.Printf("timer starts %s\n", ts.ChannelID)
-	for range ctx.Done() {
-		log.Printf("timer canceled: %s\n", ts.ChannelID)
-		ts.exit()
-		return
-	}
+	<-ctx.Done()
+	log.Printf("timer canceled: %s\n", ts.ChannelID)
+	ts.exit()
+	ts.cancel()
 }
 
 // exit ends the timer session: announces, restores stored overwrites (or deletes), and removes session.
