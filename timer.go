@@ -317,7 +317,7 @@ func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.
 			continue
 		}
 
-		if v.Speaking {
+		if (v.Speaking & 5) != 0 {
 			// start speaking: record start time and schedule immediate-stop timer
 			if session.muted[uid] {
 				// already muted; ignore
