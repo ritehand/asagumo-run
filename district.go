@@ -2,10 +2,12 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"regexp"
 
-	"github.com/bwmarrin/discordgo"
-	bot "github.com/ritehand/asagumo"
+	"github.com/disgoorg/disgo/events"
+	"github.com/disgoorg/snowflake/v2"
+	bot_asagumo "github.com/ritehand/asagumo"
 )
 
 var (
@@ -24,39 +26,39 @@ var (
 	}
 )
 
-func handleSenkyokuCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	options := i.ApplicationCommandData().Options
-	for _, opt := range options {
-		if opt.Name == optionNameSenkyoku {
-			input := opt.StringValue()
-			targetDistNum, ok := bot.NormalizeNumber(input)
-			if !ok || targetDistNum == 0 {
-				sendEphemeral(s, i, "有効な数字が見つかりませんでした。「1」「1区」「一区」のように入力してください。")
-				return
-			}
-			handleDistrictSelection(s, i, targetDistNum)
+func handleSenkyokuCommand(e *events.ApplicationCommandInteractionCreate) {
+	data := e.SlashCommandInteractionData()
+	if input, ok := data.OptString(optionNameSenkyoku); ok {
+		targetDistNum, ok := bot_asagumo.NormalizeNumber(input)
+		if !ok || targetDistNum == 0 {
+			sendEphemeral(e, "有効な数字が見つかりませんでした。「1」「1区」「一区」のように入力してください。")
 			return
 		}
+		handleDistrictSelection(e, targetDistNum)
+		return
 	}
 }
 
-func handleDistrictSelection(s *discordgo.Session, i *discordgo.InteractionCreate, targetDistNum int) {
-	userID := i.Member.User.ID
+func handleDistrictSelection(e *events.ApplicationCommandInteractionCreate, targetDistNum int) {
+	userID := e.User().ID
+	guildID := *e.GuildID()
 
 	// Get guild roles to map IDs to names
-	roles, err := s.GuildRoles(i.GuildID)
+	roles, err := e.Client().Rest.GetRoles(guildID)
 	if err != nil {
-		sendEphemeral(s, i, "エラー：サーバー情報の取得に失敗しました。")
+		sendEphemeral(e, "エラー：サーバー情報の取得に失敗しました。")
 		return
 	}
-	roleMap := make(map[string]string) // ID -> Name
+	roleMap := make(map[snowflake.ID]string) // ID -> Name
 	for _, r := range roles {
 		roleMap[r.ID] = r.Name
 	}
 
+	member := *e.Member()
+
 	// Identify user's prefecture role
 	var userPref string
-	for _, roleID := range i.Member.Roles {
+	for _, roleID := range member.RoleIDs {
 		roleName := roleMap[roleID]
 		if _, ok := prefectureDistricts[roleName]; ok {
 			userPref = roleName
@@ -65,25 +67,25 @@ func handleDistrictSelection(s *discordgo.Session, i *discordgo.InteractionCreat
 	}
 
 	if userPref == "" {
-		sendEphemeral(s, i, "都道府県ロールが付与されていません。")
+		sendEphemeral(e, "都道府県ロールが付与されていません。")
 		return
 	}
 
 	// Check district count for this prefecture from static map
 	districtCount, ok := prefectureDistricts[userPref]
 	if !ok {
-		sendEphemeral(s, i, fmt.Sprintf("エラー：%sの選挙区情報が見つかりませんでした。", userPref))
+		sendEphemeral(e, fmt.Sprintf("エラー：%sの選挙区情報が見つかりませんでした。", userPref))
 		return
 	}
 
 	if targetDistNum > districtCount {
-		sendEphemeral(s, i, fmt.Sprintf("%sには%d区までしか存在しません（%d区を選択）。", userPref, districtCount, targetDistNum))
+		sendEphemeral(e, fmt.Sprintf("%sには%d区までしか存在しません（%d区を選択）。", userPref, districtCount, targetDistNum))
 		return
 	}
 
 	// Update roles: Remove current district roles, Add new one
 	targetRoleName := fmt.Sprintf("%d区", targetDistNum)
-	var targetRoleID string
+	var targetRoleID snowflake.ID
 	for _, r := range roles {
 		if r.Name == targetRoleName {
 			targetRoleID = r.ID
@@ -91,25 +93,26 @@ func handleDistrictSelection(s *discordgo.Session, i *discordgo.InteractionCreat
 		}
 	}
 
-	if targetRoleID == "" {
-		sendEphemeral(s, i, fmt.Sprintf("エラー：%sのロールが見つかりませんでした。", targetRoleName))
+	if targetRoleID == 0 {
+		sendEphemeral(e, fmt.Sprintf("エラー：%sのロールが見つかりませんでした。", targetRoleName))
 		return
 	}
 
 	// Remove existing district roles
-	for _, roleID := range i.Member.Roles {
+	for _, roleID := range member.RoleIDs {
 		roleName := roleMap[roleID]
 		if districtRolePattern.MatchString(roleName) {
-			s.GuildMemberRoleRemove(i.GuildID, userID, roleID)
+			_ = e.Client().Rest.RemoveMemberRole(guildID, userID, roleID)
 		}
 	}
 
 	// Add new district role
-	err = s.GuildMemberRoleAdd(i.GuildID, userID, targetRoleID)
+	err = e.Client().Rest.AddMemberRole(guildID, userID, targetRoleID)
 	if err != nil {
-		sendEphemeral(s, i, "エラー：ロールの付与に失敗しました。")
+		slog.Error("Failed to add role", "error", err)
+		sendEphemeral(e, "エラー：ロールの付与に失敗しました。")
 		return
 	}
 
-	sendEphemeral(s, i, fmt.Sprintf("%sの%sロールを付与しました。", userPref, targetRoleName))
+	sendEphemeral(e, fmt.Sprintf("%sの%sロールを付与しました。", userPref, targetRoleName))
 }

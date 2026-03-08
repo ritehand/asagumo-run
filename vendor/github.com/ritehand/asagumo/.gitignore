@@ -1,0 +1,4 @@
+.DS_Store
+.env
+spec.db
+testdata/

@@ -17,4 +17,5 @@
 - [x] 発言中のリアルタイム制御（即時停止）
 - [x] 既存チャンネルOverwriteの退避と復元
 - [x] `/stop_timer`
-- [ ] `/list_timer`
+- [x] `/list_timer`
+- [x] migrating to `github.com/disgoorg/disgo` from `github.com/bwmarrin/discordgo`

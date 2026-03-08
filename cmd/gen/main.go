@@ -8,77 +8,81 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bwmarrin/discordgo"
-	bot "github.com/ritehand/asagumo"
+	"github.com/disgoorg/disgo"
+	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/snowflake/v2"
+	bot_asagumo "github.com/ritehand/asagumo"
 )
 
 func main() {
-	if bot.Token == "" {
+	if bot_asagumo.Token == "" {
 		log.Fatal("BOT_TOKEN is not set in github.com/ritehand/asagumo")
 	}
-	if bot.GuildID == "" {
+	if bot_asagumo.GuildID == "" {
 		log.Fatal("GUILD_ID is not set in github.com/ritehand/asagumo")
 	}
 
-	s, err := discordgo.New("Bot " + bot.Token)
+	guildID, _ := snowflake.Parse(bot_asagumo.GuildID)
+
+	client, err := disgo.New(bot_asagumo.Token)
 	if err != nil {
 		log.Fatalf("Invalid bot token: %v", err)
 	}
 
 	// Fetch roles
-	roles, err := s.GuildRoles(bot.GuildID)
+	roles, err := client.Rest.GetRoles(guildID)
 	if err != nil {
 		log.Fatalf("Failed to fetch roles: %v", err)
 	}
 
-	roleMap := make(map[string]string)
+	roleMap := make(map[snowflake.ID]string)
 	for _, r := range roles {
 		roleMap[r.ID] = r.Name
 	}
 
 	// Fetch channels
-	channels, err := s.GuildChannels(bot.GuildID)
+	channels, err := client.Rest.GetGuildChannels(guildID)
 	if err != nil {
 		log.Fatalf("Failed to fetch channels: %v", err)
 	}
 
-	const PermissionViewChannel = 1 << 10
-
 	// Process channels
 	type channelData struct {
-		ID           string
+		ID           snowflake.ID
 		Name         string
 		IsPrivate    bool
-		AllowedRoles []string
+		AllowedRoles []snowflake.ID
 	}
 	channelMap := make(map[string]channelData)
 	for _, c := range channels {
 		isPrivate := false
-		var allowedRoles []string
+		var allowedRoles []snowflake.ID
 
-		// Determine privacy and allowed roles
-		for _, overwrite := range c.PermissionOverwrites {
-			if overwrite.Type == discordgo.PermissionOverwriteTypeRole {
-				// Access ViewChannel permission
-				allow := (overwrite.Allow & PermissionViewChannel) != 0
-				deny := (overwrite.Deny & PermissionViewChannel) != 0
+		// Get permission overwrites from the channel
+		for _, overwrite := range c.PermissionOverwrites() {
+			if rpo, ok := overwrite.(discord.RolePermissionOverwrite); ok {
+				allow := (rpo.Allow & discord.PermissionViewChannel) != 0
+				deny := (rpo.Deny & discord.PermissionViewChannel) != 0
 
-				if overwrite.ID == bot.GuildID { // @everyone role
+				if rpo.ID() == guildID { // @everyone role
 					if deny {
 						isPrivate = true
 					}
 				} else {
 					if allow {
-						allowedRoles = append(allowedRoles, overwrite.ID)
+						allowedRoles = append(allowedRoles, rpo.ID())
 					}
 				}
 			}
 		}
-		sort.Strings(allowedRoles)
 
-		channelMap[c.Name] = channelData{
-			ID:           c.ID,
-			Name:         c.Name,
+		sort.Slice(allowedRoles, func(i, j int) bool {
+			return allowedRoles[i] < allowedRoles[j]
+		})
+
+		channelMap[c.Name()] = channelData{
+			ID:           c.ID(),
+			Name:         c.Name(),
 			IsPrivate:    isPrivate,
 			AllowedRoles: allowedRoles,
 		}
@@ -92,13 +96,15 @@ func main() {
 
 	// Roles
 	sb.WriteString("\troles = map[string]RoleInfo{\n")
-	roleIDs := make([]string, 0, len(roleMap))
+	roleIDs := make([]snowflake.ID, 0, len(roleMap))
 	for id := range roleMap {
 		roleIDs = append(roleIDs, id)
 	}
-	sort.Strings(roleIDs)
+	sort.Slice(roleIDs, func(i, j int) bool {
+		return roleIDs[i] < roleIDs[j]
+	})
 	for _, id := range roleIDs {
-		sb.WriteString(fmt.Sprintf("\t\t%q: {ID: %q, Name: %q},\n", id, id, roleMap[id]))
+		sb.WriteString(fmt.Sprintf("\t\t%q: {ID: %q, Name: %q},\n", id.String(), id.String(), roleMap[id]))
 	}
 	sb.WriteString("\t}\n\n")
 
@@ -117,7 +123,7 @@ func main() {
 			allowedStr = fmt.Sprintf("[]string{%s}", strings.Join(quoteList(info.AllowedRoles), ", "))
 		}
 		sb.WriteString(fmt.Sprintf("\t\t%q: {ID: %q, Name: %q, IsPrivate: %v, AllowedRoles: %s},\n",
-			name, info.ID, info.Name, info.IsPrivate, allowedStr))
+			name, info.ID.String(), info.Name, info.IsPrivate, allowedStr))
 	}
 
 	sb.WriteString("\t}\n")
@@ -138,10 +144,10 @@ func main() {
 	fmt.Printf("Successfully generated %s with %d channels and %d roles\n", outFile, len(channelMap), len(roleMap))
 }
 
-func quoteList(list []string) []string {
+func quoteList(list []snowflake.ID) []string {
 	res := make([]string, len(list))
 	for i, s := range list {
-		res[i] = fmt.Sprintf("%q", s)
+		res[i] = fmt.Sprintf("%q", s.String())
 	}
 	return res
 }

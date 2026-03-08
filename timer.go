@@ -3,34 +3,38 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
-	"github.com/bwmarrin/discordgo"
+	"github.com/disgoorg/disgo/bot"
+	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/disgo/events"
+	"github.com/disgoorg/disgo/voice"
+	"github.com/disgoorg/snowflake/v2"
 )
 
 type SavedOverwrite struct {
 	Exists bool
-	Allow  int64
-	Deny   int64
+	Allow  discord.Permissions
+	Deny   discord.Permissions
 }
 
 type TimerSession struct {
-	Session    *discordgo.Session
-	Connection *discordgo.VoiceConnection
-	GuildID    string
-	ChannelID  string
+	Client     *bot.Client
+	Connection voice.Conn
+	GuildID    snowflake.ID
+	ChannelID  snowflake.ID
 	Total      time.Duration
 	Start      time.Time
 
-	userSpeakingTime map[string]time.Duration
-	lastStart        map[string]time.Time
-	allocated        map[string]time.Duration
-	participants     map[string]bool
-	muted            map[string]bool
-	savedOverwrites  map[string]SavedOverwrite
-	timers           map[string]*time.Timer
+	userSpeakingTime map[snowflake.ID]time.Duration
+	lastStart        map[snowflake.ID]time.Time
+	allocated        map[snowflake.ID]time.Duration
+	participants     map[snowflake.ID]bool
+	muted            map[snowflake.ID]bool
+	savedOverwrites  map[snowflake.ID]SavedOverwrite
+	timers           map[snowflake.ID]*time.Timer
 
 	mu sync.Mutex
 	// ctx    context.Context
@@ -40,151 +44,205 @@ type TimerSession struct {
 
 type TimerManager struct {
 	mu       sync.Mutex
-	sessions map[string]*TimerSession // key: channelID
+	sessions map[snowflake.ID]*TimerSession // key: channelID
 }
 
-var timerManager = &TimerManager{sessions: make(map[string]*TimerSession)}
+var timerManager = &TimerManager{sessions: make(map[snowflake.ID]*TimerSession)}
 
-func (tm *TimerManager) StartTimer(s *discordgo.Session, guildID, channelID, replyChannelID string, total time.Duration) error {
+func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate, guildID, channelID snowflake.ID, total time.Duration) {
+	client := e.Client()
+
 	tm.mu.Lock()
-	defer tm.mu.Unlock()
-
 	if _, ok := tm.sessions[channelID]; ok {
-		return fmt.Errorf("このチャンネルでは既にタイマーが動作中です")
+		tm.mu.Unlock()
+		updateInteractionResponse(e, "このチャンネルでは既にタイマーが動作中です")
+		return
 	}
 
 	// gather participants currently in the voice channel
-	var participants []string
-	guild, _ := s.State.Guild(guildID)
-	if guild != nil {
-		for _, vs := range guild.VoiceStates {
-			if vs.ChannelID == channelID && vs.UserID != s.State.User.ID {
-				if isBot(s, guildID, vs.UserID) {
-					continue
-				}
-				participants = append(participants, vs.UserID)
+	var participants []snowflake.ID
+	for vs := range client.Caches.VoiceStates(guildID) {
+		if vs.ChannelID != nil && *vs.ChannelID == channelID && vs.UserID != client.ID() {
+			if isBot(client, guildID, vs.UserID) {
+				continue
 			}
+			participants = append(participants, vs.UserID)
 		}
 	}
 
 	if len(participants) == 0 {
-		return fmt.Errorf("ボイスチャンネルに参加しているユーザーがいません")
+		tm.mu.Unlock()
+		updateInteractionResponse(e, "ボイスチャンネルに参加しているユーザーがいません")
+		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), total)
+	// Placeholder to prevent concurrent starts for the same channel
+	tm.sessions[channelID] = nil
+	tm.mu.Unlock()
 
-	vc, err := s.ChannelVoiceJoin(ctx, guildID, channelID, true, false)
-	if err != nil {
-		cancel()
-		return err
-	}
-	vc.AddHandler(func(_ *discordgo.VoiceConnection, vs *discordgo.VoiceSpeakingUpdate) {
-		timerManager.HandleSpeakingUpdate(s, vs)
-	})
+	// Run voice connection and initialization in a separate goroutine to avoid gateway deadlock
+	go func() {
+		slog.Info("PHASE 1: StartTimer (async) called", "guildID", guildID, "channelID", channelID, "total", total)
 
-	session := &TimerSession{
-		Session:          s,
-		Connection:       vc,
-		GuildID:          guildID,
-		ChannelID:        channelID,
-		Total:            total,
-		Start:            time.Now(),
-		userSpeakingTime: make(map[string]time.Duration),
-		lastStart:        make(map[string]time.Time),
-		allocated:        make(map[string]time.Duration),
-		participants:     make(map[string]bool),
-		muted:            make(map[string]bool),
-		savedOverwrites:  make(map[string]SavedOverwrite),
-		timers:           make(map[string]*time.Timer),
-		Active:           true,
-		// ctx:              ctx,
-		cancel: cancel,
-	}
+		// Use a separate short timeout for connection establishment
+		connCtx, connCancel := context.WithTimeout(context.Background(), 25*time.Second)
+		defer connCancel()
 
-	per := total / time.Duration(len(participants))
-	for _, u := range participants {
-		session.participants[u] = true
-		session.allocated[u] = per
-	}
+		// CRITICAL: Explicitly close any existing connection to eliminate "zombie" websockets
+		if old := client.VoiceManager.GetConn(guildID); old != nil {
+			slog.Info("Closing and removing existing voice connection", "guildID", guildID)
+			old.Close(connCtx)
+			client.VoiceManager.RemoveConn(guildID)
+			// Wait a bit for the state to clear on Discord's side
+			time.Sleep(1 * time.Second)
+		}
 
-	go session.start(ctx)
+		conn := client.VoiceManager.CreateConn(guildID)
 
-	tm.sessions[channelID] = session
+		slog.Info("PHASE 2: Conn opening...", "guildID", guildID)
+		// Open the voice gateway. Join UNMUTED and UN-DEAFENED to provide a standard state for DAVE handshake.
+		err := conn.Open(connCtx, channelID, false, false)
+		if err != nil {
+			slog.Error("PHASE 2.5: Conn open failed", "error", err)
+			conn.Close(context.Background()) // Close to prevent background reconnect attempts
+			tm.mu.Lock()
+			delete(tm.sessions, channelID)
+			tm.mu.Unlock()
+			updateInteractionResponse(e, "ボイスチャンネルへの接続に失敗しました: "+err.Error())
+			return
+		}
+		slog.Info("PHASE 3: Conn opened", "channelID", channelID)
 
-	embed := &discordgo.MessageEmbed{
-		Title:       "タイマーを開始しました",
-		Description: fmt.Sprintf("合計 %v、参加者 %d、各自割当 %v", total, len(participants), per),
-		Color:       0x00ff00,
-		Footer: &discordgo.MessageEmbedFooter{
-			Text: fmt.Sprintf("version: %s", version),
-		},
-	}
-	_, err = s.ChannelMessageSendEmbed(channelID, embed)
-	if err != nil {
-		fmt.Println("Embedの送信に失敗しました:", err)
-	}
+		// Wait for DAVE (E2EE) handshake to fully complete.
+		// DAVE often takes 2-4 seconds to stabilize on Mac.
+		time.Sleep(5 * time.Second)
 
-	return nil
+		// Check if the connection survived the handshake
+		if conn.Gateway().Status() != voice.StatusReady {
+			slog.Error("PHASE 3.5: Conn dropped during DAVE handshake", "status", conn.Gateway().Status())
+			tm.mu.Lock()
+			delete(tm.sessions, channelID)
+			tm.mu.Unlock()
+			updateInteractionResponse(e, "暗号化接続 (DAVE) の確立に失敗しました。時間をおいて再度お試しください。")
+			return
+		}
+
+		// Create the main timer context
+		timerCtx, timerCancel := context.WithTimeout(context.Background(), total)
+
+		session := &TimerSession{
+			Client:           client,
+			Connection:       conn,
+			GuildID:          guildID,
+			ChannelID:        channelID,
+			Total:            total,
+			Start:            time.Now(),
+			userSpeakingTime: make(map[snowflake.ID]time.Duration),
+			lastStart:        make(map[snowflake.ID]time.Time),
+			allocated:        make(map[snowflake.ID]time.Duration),
+			participants:     make(map[snowflake.ID]bool),
+			muted:            make(map[snowflake.ID]bool),
+			savedOverwrites:  make(map[snowflake.ID]SavedOverwrite),
+			timers:           make(map[snowflake.ID]*time.Timer),
+			Active:           true,
+			cancel:           timerCancel,
+		}
+
+		// Now that it's stable, set the event handler for participant tracking
+		conn.SetEventHandlerFunc(func(gateway voice.Gateway, opCode voice.Opcode, sequenceNumber int, data voice.GatewayMessageData) {
+			go func() {
+				if opCode == voice.OpcodeSpeaking {
+					if speaking, ok := data.(voice.GatewayMessageDataSpeaking); ok {
+						if speaking.Speaking > 0 {
+							timerManager.handleSpeakingStart(session, speaking.UserID)
+						} else {
+							timerManager.handleSpeakingStop(session, speaking.UserID)
+						}
+					}
+				}
+			}()
+		})
+
+		per := total / time.Duration(len(participants))
+		for _, u := range participants {
+			session.participants[u] = true
+			session.allocated[u] = per
+		}
+
+		go session.run(timerCtx)
+
+		tm.mu.Lock()
+		tm.sessions[channelID] = session
+		tm.mu.Unlock()
+
+		slog.Info("PHASE 4")
+
+		embed := discord.NewEmbedBuilder().
+			SetTitle("タイマーを開始しました").
+			SetDescriptionf("合計 %v、参加者 %d、各自割当 %v", total, len(participants), per).
+			SetColor(0x00ff00).
+			SetFooterText("version: " + version).
+			Build()
+
+		slog.Info("PHASE 5")
+
+		updateInteractionResponse(e, "タイマーを開始しました")
+		_, _ = client.Rest.CreateMessage(channelID, discord.MessageCreate{Embeds: []discord.Embed{embed}})
+	}()
 }
 
-func (tm *TimerManager) StopTimer(s *discordgo.Session, guildID, channelID, replyChannelID string) error {
+func (tm *TimerManager) StopTimer(client *bot.Client, guildID, channelID snowflake.ID) error {
 	tm.mu.Lock()
-	defer tm.mu.Unlock()
-	if session, ok := tm.sessions[channelID]; ok {
+	if session, ok := tm.sessions[channelID]; ok && session != nil {
+		tm.mu.Unlock()
 		session.cancel()
 		return nil
-	} else {
-		return fmt.Errorf("このチャンネルでは現在タイマーが作動していません")
 	}
+	tm.mu.Unlock()
+	return fmt.Errorf("このチャンネルでは現在タイマーが作動していません")
 }
 
-func (tm *TimerManager) ListTimer(s *discordgo.Session, guildID, channelID, replyChannelID string) error {
+func (tm *TimerManager) ListTimer(client *bot.Client, guildID, channelID snowflake.ID) error {
 	tm.mu.Lock()
-	defer tm.mu.Unlock()
-	if session, ok := tm.sessions[channelID]; ok {
-		fields := make([]*discordgo.MessageEmbedField, 0)
-		for uid, ok := range session.participants {
-			if ok {
-				if user, err := session.Session.User(uid); err == nil {
-					userRemain := (session.allocated[uid] - session.userSpeakingTime[uid]).Round(time.Second)
-					fields = append(fields, &discordgo.MessageEmbedField{
-						Name:   user.Username,
-						Value:  fmt.Sprintf("%v", userRemain),
-						Inline: true,
-					})
+	session, ok := tm.sessions[channelID]
+	tm.mu.Unlock()
+	if ok && session != nil {
+		eb := discord.NewEmbedBuilder().
+			SetTitle("残りの持ち時間").
+			SetColor(0x00ff00).
+			SetFooterText("version: " + version)
+
+		session.mu.Lock()
+		remainTotal := (session.Total - time.Since(session.Start)).Round(time.Second)
+		eb.SetDescriptionf("全体の残り時間: %v", remainTotal)
+
+		for uid, participating := range session.participants {
+			if participating {
+				var username string
+				if m, ok := client.Caches.Member(guildID, uid); ok {
+					username = m.User.Username
+				} else {
+					username = uid.String()
 				}
+				userRemain := (session.allocated[uid] - session.userSpeakingTime[uid]).Round(time.Second)
+				eb.AddField(username, fmt.Sprintf("%v", userRemain), true)
 			}
 		}
-		remain := (session.Total - time.Since(session.Start)).Round(time.Second)
-		embed := &discordgo.MessageEmbed{
-			Title:       "残りの持ち時間",
-			Description: fmt.Sprintf("全体の残り時間: %v", remain),
-			Color:       0x00ff00,
-			Fields:      fields,
-			Footer: &discordgo.MessageEmbedFooter{
-				Text: fmt.Sprintf("version: %s", version),
-			},
-		}
-		_, err := s.ChannelMessageSendEmbed(session.ChannelID, embed)
-		if err != nil {
-			fmt.Println("Embedの送信に失敗しました:", err)
-		}
+		session.mu.Unlock()
 
+		_, _ = client.Rest.CreateMessage(channelID, discord.MessageCreate{Embeds: []discord.Embed{eb.Build()}})
 		return nil
-	} else {
-		return fmt.Errorf("このチャンネルでは現在タイマーが作動していません")
 	}
+	return fmt.Errorf("このチャンネルでは現在タイマーが作動していません")
 }
 
-func (ts *TimerSession) start(ctx context.Context) {
-	log.Printf("timer starts %s\n", ts.ChannelID)
+func (ts *TimerSession) run(ctx context.Context) {
+	slog.Info("timer starts", "channel_id", ts.ChannelID, "total", ts.Total)
 	<-ctx.Done()
-	log.Printf("timer canceled: %s\n", ts.ChannelID)
+	slog.Info("timer finished or canceled", "channel_id", ts.ChannelID)
 	ts.exit()
-	ts.cancel()
 }
 
-// exit ends the timer session: announces, restores stored overwrites (or deletes), and removes session.
 func (ts *TimerSession) exit() {
 	ts.mu.Lock()
 	if !ts.Active {
@@ -192,520 +250,309 @@ func (ts *TimerSession) exit() {
 		return
 	}
 	ts.Active = false
-	participants := make([]string, 0, len(ts.participants))
+	participants := make([]snowflake.ID, 0, len(ts.participants))
 	for uid := range ts.participants {
 		participants = append(participants, uid)
 	}
 	ts.mu.Unlock()
 
-	embed := &discordgo.MessageEmbed{
-		Title:       "全体の持ち時間が終了しました",
-		Description: "ミュート設定を解除します",
-		Color:       0xff0000,
-		Footer: &discordgo.MessageEmbedFooter{
-			Text: fmt.Sprintf("version: %s", version),
-		},
-	}
-	_, err := ts.Session.ChannelMessageSendEmbed(ts.ChannelID, embed)
-	if err != nil {
-		fmt.Println("Embedの送信に失敗しました:", err)
-	}
-	// restore per-channel permission overwrites we recorded (or delete if none existed)
+	slog.Info("timer exiting, closing connection", "channel_id", ts.ChannelID)
+
+	embed := discord.NewEmbedBuilder().
+		SetTitle("全体の持ち時間が終了しました").
+		SetDescription("ミュート設定を解除します").
+		SetColor(0xff0000).
+		SetFooterText("version: " + version).
+		Build()
+
+	_, _ = ts.Client.Rest.CreateMessage(ts.ChannelID, discord.MessageCreate{Embeds: []discord.Embed{embed}})
+
 	for _, uid := range participants {
+		ts.mu.Lock()
 		if ts.muted[uid] {
 			if so, ok := ts.savedOverwrites[uid]; ok {
 				if so.Exists {
-					if err := ts.Session.ChannelPermissionSet(ts.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, so.Allow, so.Deny); err != nil {
-						log.Println("ChannelPermissionSet(restore) failed:", err)
-						notifyAdmin(ts.Session, ts.GuildID, fmt.Sprintf("チャンネル復元に失敗しました: channel=%s user=%s err=%v", ts.ChannelID, uid, err))
-					}
+					_ = ts.Client.Rest.UpdatePermissionOverwrite(ts.ChannelID, uid, discord.MemberPermissionOverwriteUpdate{
+						Allow: &so.Allow,
+						Deny:  &so.Deny,
+					})
 				} else {
-					if err := ts.Session.ChannelPermissionDelete(ts.ChannelID, uid); err != nil {
-						log.Println("ChannelPermissionDelete(unmute) failed:", err)
-						notifyAdmin(ts.Session, ts.GuildID, fmt.Sprintf("チャンネル復元(削除)に失敗しました: channel=%s user=%s err=%v", ts.ChannelID, uid, err))
-					}
+					_ = ts.Client.Rest.DeletePermissionOverwrite(ts.ChannelID, uid)
 				}
 				delete(ts.savedOverwrites, uid)
 			} else {
-				// fallback: try delete
-				if err := ts.Session.ChannelPermissionDelete(ts.ChannelID, uid); err != nil {
-					log.Println("ChannelPermissionDelete(unmute) failed:", err)
-					notifyAdmin(ts.Session, ts.GuildID, fmt.Sprintf("チャンネル復元(削除-fallback)に失敗しました: channel=%s user=%s err=%v", ts.ChannelID, uid, err))
-				}
+				_ = ts.Client.Rest.DeletePermissionOverwrite(ts.ChannelID, uid)
 			}
 		}
-	}
-	if err := ts.Connection.Disconnect(context.Background()); err != nil {
-		log.Println("Connection.Disconnect failed:", err)
-		notifyAdmin(ts.Session, ts.GuildID, fmt.Sprintf("Connection.Disconnectに失敗しました: channel=%s err=%v", ts.ChannelID, err))
-
+		ts.mu.Unlock()
 	}
 
-	// remove session
+	// Close connection with a timeout
+	closeCtx, closeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer closeCancel()
+	ts.Connection.Close(closeCtx)
+
 	timerManager.mu.Lock()
 	delete(timerManager.sessions, ts.ChannelID)
 	timerManager.mu.Unlock()
-	log.Printf("timer exits: %s\n", ts.ChannelID)
+	slog.Info("timer session completely removed", "channel_id", ts.ChannelID)
 }
 
-// HandleSpeakingUpdate processes VoiceSpeakingUpdate events for active timers
-func (tm *TimerManager) HandleSpeakingUpdate(s *discordgo.Session, v *discordgo.VoiceSpeakingUpdate) {
-	// find session by channel id
-	uid := v.UserID
-
-	// copy sessions to avoid holding tm.mu while processing
-	tm.mu.Lock()
-	sessions := make([]*TimerSession, 0, len(tm.sessions))
-	for _, ss := range tm.sessions {
-		sessions = append(sessions, ss)
-	}
-	tm.mu.Unlock()
-
-	for _, session := range sessions {
-		session.mu.Lock()
-		// skip bot users (per-session guild)
-		if isBot(s, session.GuildID, uid) {
-			session.mu.Unlock()
-			continue
-		}
-		// process only if the user is tracked in this session
-		// If user is not part of participants set, they may have joined mid-session.
-		if !session.participants[uid] {
-			// enforce per-channel mute for late joiners
-			session.participants[uid] = true
-			session.allocated[uid] = 0
-			// record existing overwrite then deny SPEAK permission in this channel (bit 1<<21)
-			if _, ok := session.savedOverwrites[uid]; !ok {
-				// try to capture existing overwrite
-				ch, err := s.Channel(session.ChannelID)
-				if err == nil {
-					found := false
-					for _, po := range ch.PermissionOverwrites {
-						if po.ID == uid && po.Type == discordgo.PermissionOverwriteTypeMember {
-							session.savedOverwrites[uid] = SavedOverwrite{Exists: true, Allow: po.Allow, Deny: po.Deny}
-							found = true
-							break
-						}
-					}
-					if !found {
-						session.savedOverwrites[uid] = SavedOverwrite{Exists: false}
-					}
-				} else {
-					// on error, mark as not existed (best-effort)
-					session.savedOverwrites[uid] = SavedOverwrite{Exists: false}
-				}
-			}
-			denySpeak := int64(1 << 21)
-			if err := s.ChannelPermissionSet(session.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err != nil {
-				log.Println("ChannelPermissionSet(mute late join) failed:", err)
-			} else {
-				session.muted[uid] = true
-				embed := &discordgo.MessageEmbed{
-					Title:       fmt.Sprintf("途中参加: <@%s> さん", uid),
-					Description: fmt.Sprintf("<@%s> さんは途中参加のためミュートしました", uid),
-					Color:       0xffff00,
-					Footer: &discordgo.MessageEmbedFooter{
-						Text: fmt.Sprintf("version: %s", version),
-					},
-				}
-				_, err = s.ChannelMessageSendEmbed(session.ChannelID, embed)
-				if err != nil {
-					fmt.Println("Embedの送信に失敗しました:", err)
-				}
-			}
-			session.mu.Unlock()
-			continue
-		}
-
-		if (v.Speaking & 5) != 0 {
-			// start speaking: record start time and schedule immediate-stop timer
-			if session.muted[uid] {
-				// already muted; ignore
-				session.mu.Unlock()
-				continue
-			}
-			session.lastStart[uid] = time.Now()
-			// cancel any previous timer
-			if t, ok := session.timers[uid]; ok {
-				t.Stop()
-				delete(session.timers, uid)
-			}
-
-			log.Printf("user speaking: %s\n", uid)
-
-			alloc := session.allocated[uid]
-			used := session.userSpeakingTime[uid]
-			// if user has no allocation or already exhausted, mute immediately
-			if alloc > 0 {
-				remaining := alloc - used
-				if remaining <= 0 {
-					// immediate mute — save existing overwrite first if needed
-					if _, ok := session.savedOverwrites[uid]; !ok {
-						ch, err := s.Channel(session.ChannelID)
-						if err == nil {
-							found := false
-							for _, po := range ch.PermissionOverwrites {
-								if po.ID == uid && po.Type == discordgo.PermissionOverwriteTypeMember {
-									session.savedOverwrites[uid] = SavedOverwrite{Exists: true, Allow: po.Allow, Deny: po.Deny}
-									found = true
-									break
-								}
-							}
-							if !found {
-								session.savedOverwrites[uid] = SavedOverwrite{Exists: false}
-							}
-						} else {
-							session.savedOverwrites[uid] = SavedOverwrite{Exists: false}
-						}
-					}
-					denySpeak := int64(1 << 21)
-					if err := s.ChannelPermissionSet(session.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err == nil {
-						session.muted[uid] = true
-						embed := &discordgo.MessageEmbed{
-							Title:       fmt.Sprintf("時間超過: <@%s> さん", uid),
-							Description: fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました。", uid),
-							Color:       0xffff00,
-							Footer: &discordgo.MessageEmbedFooter{
-								Text: fmt.Sprintf("version: %s", version),
-							},
-						}
-						_, err = s.ChannelMessageSendEmbed(session.ChannelID, embed)
-						if err != nil {
-							fmt.Println("Embedの送信に失敗しました:", err)
-						}
-					} else {
-						log.Println("ChannelPermissionSet(immediate mute) failed:", err)
-					}
-					session.mu.Unlock()
-					continue
-				}
-
-				// schedule a timer to fire when remaining elapses
-				uidCopy := uid
-				chID := session.ChannelID
-				t := time.AfterFunc(remaining, func() {
-					// lock session to check speaking state and mute flag
-					session.mu.Lock()
-					// ensure user is still speaking
-					if start, ok := session.lastStart[uidCopy]; !ok || start.IsZero() {
-						session.mu.Unlock()
-						return
-					}
-					if session.muted[uidCopy] {
-						session.mu.Unlock()
-						return
-					}
-					// prepare to mute: ensure we recorded existing overwrite
-					if _, ok := session.savedOverwrites[uidCopy]; !ok {
-						// unlock while calling API
-						session.mu.Unlock()
-						ch, err := s.Channel(chID)
-						if err == nil {
-							found := false
-							for _, po := range ch.PermissionOverwrites {
-								if po.ID == uidCopy && po.Type == discordgo.PermissionOverwriteTypeMember {
-									session.mu.Lock()
-									session.savedOverwrites[uidCopy] = SavedOverwrite{Exists: true, Allow: po.Allow, Deny: po.Deny}
-									session.mu.Unlock()
-									found = true
-									break
-								}
-							}
-							if !found {
-								session.mu.Lock()
-								session.savedOverwrites[uidCopy] = SavedOverwrite{Exists: false}
-								session.mu.Unlock()
-							}
-						} else {
-							session.mu.Lock()
-							session.savedOverwrites[uidCopy] = SavedOverwrite{Exists: false}
-							session.mu.Unlock()
-						}
-						session.mu.Lock()
-					}
-					session.muted[uidCopy] = true
-					session.mu.Unlock()
-
-					// apply channel permission mute
-					denySpeak := int64(1 << 21)
-					if err := s.ChannelPermissionSet(chID, uidCopy, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err == nil {
-						embed := &discordgo.MessageEmbed{
-							Title:       fmt.Sprintf("時間超過: <@%s> さん", uid),
-							Description: fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました", uid),
-							Color:       0xffff00,
-							Footer: &discordgo.MessageEmbedFooter{
-								Text: fmt.Sprintf("version: %s", version),
-							},
-						}
-						_, err = s.ChannelMessageSendEmbed(session.ChannelID, embed)
-						if err != nil {
-							fmt.Println("Embedの送信に失敗しました:", err)
-						}
-					} else {
-						log.Println("ChannelPermissionSet(mute timer) failed:", err)
-					}
-				})
-				session.timers[uid] = t
-			}
-
-			session.mu.Unlock()
-			continue
-		}
-
-		// speaking stopped: accumulate time and cancel any running timer
-		if start, ok := session.lastStart[uid]; ok && !start.IsZero() {
-			dur := time.Since(start)
-			session.userSpeakingTime[uid] += dur
-			session.lastStart[uid] = time.Time{}
-
-			// cancel pending timer if exists
-			if t, ok := session.timers[uid]; ok {
-				t.Stop()
-				delete(session.timers, uid)
-			}
-
-			alloc := session.allocated[uid]
-			if alloc > 0 && session.userSpeakingTime[uid] > alloc {
-				// set per-channel permission overwrite to deny speaking (save overwrite first)
-				if _, ok := session.savedOverwrites[uid]; !ok {
-					ch, err := s.Channel(session.ChannelID)
-					if err == nil {
-						found := false
-						for _, po := range ch.PermissionOverwrites {
-							if po.ID == uid && po.Type == discordgo.PermissionOverwriteTypeMember {
-								session.savedOverwrites[uid] = SavedOverwrite{Exists: true, Allow: po.Allow, Deny: po.Deny}
-								found = true
-								break
-							}
-						}
-						if !found {
-							session.savedOverwrites[uid] = SavedOverwrite{Exists: false}
-						}
-					} else {
-						session.savedOverwrites[uid] = SavedOverwrite{Exists: false}
-					}
-				}
-				denySpeak := int64(1 << 21)
-				if err := s.ChannelPermissionSet(session.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err == nil {
-					session.muted[uid] = true
-					embed := &discordgo.MessageEmbed{
-						Title:       fmt.Sprintf("時間超過: <@%s> さん", uid),
-						Description: fmt.Sprintf("<@%s> さんが割当時間を超えたためミュートしました", uid),
-						Color:       0xffff00,
-						Footer: &discordgo.MessageEmbedFooter{
-							Text: fmt.Sprintf("version: %s", version),
-						},
-					}
-					_, err = s.ChannelMessageSendEmbed(session.ChannelID, embed)
-					if err != nil {
-						fmt.Println("Embedの送信に失敗しました:", err)
-					}
-				} else {
-					log.Println("ChannelPermissionSet(mute) failed:", err)
-				}
-			}
-		}
-		session.mu.Unlock()
-	}
-}
-
-// HandleVoiceStateUpdate processes VoiceStateUpdate events to immediately
-// detect users joining a channel and apply per-channel mute if a session is active.
-func (tm *TimerManager) HandleVoiceStateUpdate(s *discordgo.Session, vs *discordgo.VoiceStateUpdate) {
-	if vs == nil || vs.UserID == "" {
-		return
-	}
-	// ignore bot
-	if vs.UserID == s.State.User.ID {
-		return
-	}
-	if isBot(s, vs.GuildID, vs.UserID) {
-		return
-	}
-
-	// if user left a channel, ChannelID may be empty — only handle joins
-	if vs.ChannelID == "" {
-		return
-	}
-
-	tm.mu.Lock()
-	session, ok := tm.sessions[vs.ChannelID]
-	tm.mu.Unlock()
-	if !ok {
-		return
-	}
-
+func (tm *TimerManager) handleSpeakingStart(session *TimerSession, uid snowflake.ID) {
 	session.mu.Lock()
 	defer session.mu.Unlock()
 
-	uid := vs.UserID
-	if session.participants[uid] {
+	if isBot(session.Client, session.GuildID, uid) {
 		return
 	}
 
-	// mark as participant with zero allocation and mute in-channel
+	if !session.participants[uid] {
+		tm.muteLateJoiner(session, uid)
+		return
+	}
+
+	if session.muted[uid] {
+		return
+	}
+
+	session.lastStart[uid] = time.Now()
+	if t, ok := session.timers[uid]; ok {
+		t.Stop()
+		delete(session.timers, uid)
+	}
+
+	alloc := session.allocated[uid]
+	used := session.userSpeakingTime[uid]
+	if alloc > 0 {
+		remaining := alloc - used
+		if remaining <= 0 {
+			tm.muteUserNoLock(session, uid, "時間超過")
+			return
+		}
+
+		session.timers[uid] = time.AfterFunc(remaining, func() {
+			tm.muteUserFromTimer(session, uid)
+		})
+	}
+}
+
+func (tm *TimerManager) handleSpeakingStop(session *TimerSession, uid snowflake.ID) {
+	session.mu.Lock()
+	defer session.mu.Unlock()
+
+	if start, ok := session.lastStart[uid]; ok && !start.IsZero() {
+		dur := time.Since(start)
+		session.userSpeakingTime[uid] += dur
+		session.lastStart[uid] = time.Time{}
+
+		if t, ok := session.timers[uid]; ok {
+			t.Stop()
+			delete(session.timers, uid)
+		}
+
+		if session.userSpeakingTime[uid] >= session.allocated[uid] && session.allocated[uid] > 0 {
+			tm.muteUserNoLock(session, uid, "時間超過")
+		}
+	}
+}
+
+func (tm *TimerManager) muteLateJoiner(session *TimerSession, uid snowflake.ID) {
 	session.participants[uid] = true
 	session.allocated[uid] = 0
-	// save existing overwrite first (best-effort)
-	if _, ok := session.savedOverwrites[uid]; !ok {
-		ch, err := s.Channel(session.ChannelID)
-		if err == nil {
-			found := false
-			for _, po := range ch.PermissionOverwrites {
-				if po.ID == uid && po.Type == discordgo.PermissionOverwriteTypeMember {
-					session.savedOverwrites[uid] = SavedOverwrite{Exists: true, Allow: po.Allow, Deny: po.Deny}
+	tm.muteUserNoLock(session, uid, "途中参加")
+}
+
+func (tm *TimerManager) muteUserNoLock(session *TimerSession, uid snowflake.ID, reason string) {
+	if session.muted[uid] {
+		return
+	}
+	session.muted[uid] = true
+
+	// Offload REST calls to a goroutine to avoid blocking gateway / voice threads
+	go func() {
+		ch, err := session.Client.Rest.GetChannel(session.ChannelID)
+		if err != nil {
+			slog.Error("Failed to get channel for mute", "error", err, "channelID", session.ChannelID)
+			return
+		}
+
+		var allow discord.Permissions
+		var deny discord.Permissions
+		found := false
+		if tc, ok := ch.(discord.GuildChannel); ok {
+			for _, po := range tc.PermissionOverwrites() {
+				if mpo, ok := po.(discord.MemberPermissionOverwrite); ok && mpo.ID() == uid {
+					allow = mpo.Allow
+					deny = mpo.Deny
 					found = true
 					break
 				}
 			}
-			if !found {
-				session.savedOverwrites[uid] = SavedOverwrite{Exists: false}
-			}
+		}
+
+		session.mu.Lock()
+		if found {
+			session.savedOverwrites[uid] = SavedOverwrite{Exists: true, Allow: allow, Deny: deny}
 		} else {
 			session.savedOverwrites[uid] = SavedOverwrite{Exists: false}
 		}
-	}
-	denySpeak := int64(1 << 21)
-	if err := s.ChannelPermissionSet(session.ChannelID, uid, discordgo.PermissionOverwriteTypeMember, 0, denySpeak); err != nil {
-		log.Println("ChannelPermissionSet(mute on join) failed:", err)
-		return
-	}
-	session.muted[uid] = true
+		session.mu.Unlock()
+
+		denySpeak := discord.PermissionSpeak | deny
+		allowSpeak := allow &^ discord.PermissionSpeak
+
+		_ = session.Client.Rest.UpdatePermissionOverwrite(session.ChannelID, uid, discord.MemberPermissionOverwriteUpdate{
+			Allow: &allowSpeak,
+			Deny:  &denySpeak,
+		})
+
+		embed := discord.NewEmbedBuilder().
+			SetTitle(fmt.Sprintf("%s: <@%s> さん", reason, uid)).
+			SetDescriptionf("<@%s> さんをミュートしました (%s)", uid, reason).
+			SetColor(0xffff00).
+			SetFooterText("version: " + version).
+			Build()
+		_, _ = session.Client.Rest.CreateMessage(session.ChannelID, discord.MessageCreate{Embeds: []discord.Embed{embed}})
+	}()
 }
 
-// handleTimerCommand is invoked from the interaction handler in main.go
-func handleTimerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	options := i.ApplicationCommandData().Options
-	var input string
-	for _, opt := range options {
-		if opt.Name == optionNameDuration {
-			input = opt.StringValue()
-			break
-		}
+func (tm *TimerManager) muteUserFromTimer(session *TimerSession, uid snowflake.ID) {
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if start, ok := session.lastStart[uid]; ok && !start.IsZero() {
+		tm.muteUserNoLock(session, uid, "時間超過")
 	}
-	const errMsg = "有効な時間を指定してください。例: 30m, 1h"
-	if input == "" {
-		sendEphemeral(s, i, errMsg)
+}
+
+func (tm *TimerManager) HandleVoiceStateUpdate(client *bot.Client, e *events.GuildVoiceStateUpdate) {
+	if e.VoiceState.UserID == client.ID() || isBot(client, e.VoiceState.GuildID, e.VoiceState.UserID) {
 		return
 	}
 
+	if e.VoiceState.ChannelID == nil {
+		return
+	}
+
+	go func() {
+		tm.mu.Lock()
+		session, ok := tm.sessions[*e.VoiceState.ChannelID]
+		tm.mu.Unlock()
+		if !ok || session == nil {
+			return
+		}
+
+		session.mu.Lock()
+		defer session.mu.Unlock()
+
+		if session.participants[e.VoiceState.UserID] {
+			return
+		}
+
+		tm.muteLateJoiner(session, e.VoiceState.UserID)
+	}()
+}
+
+func handleTimerCommand(e *events.ApplicationCommandInteractionCreate) {
+	data := e.SlashCommandInteractionData()
+	input, _ := data.OptString(optionNameDuration)
 	dur, err := time.ParseDuration(input)
 	if err != nil {
-		sendEphemeral(s, i, errMsg)
+		_ = e.CreateMessage(discord.MessageCreate{
+			Content: "有効な時間を指定してください。例: 30m, 1h",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 		return
 	}
 
-	// find the voice channel the invoking user is currently in
-	userID := i.Member.User.ID
-	guild, _ := s.State.Guild(i.GuildID)
-	var channelID string
-	if guild != nil {
-		for _, vs := range guild.VoiceStates {
-			if vs.UserID == userID {
-				channelID = vs.ChannelID
-				break
-			}
-		}
-	}
+	userID := e.User().ID
+	guildID := *e.GuildID()
+	var channelID snowflake.ID
 
-	if channelID == "" {
-		sendEphemeral(s, i, "まずボイスチャンネルに参加してからコマンドを実行してください。")
+	if vs, ok := e.Client().Caches.VoiceState(guildID, userID); ok && vs.ChannelID != nil {
+		channelID = *vs.ChannelID
+	}
+	if channelID == 0 {
+		_ = e.CreateMessage(discord.MessageCreate{
+			Content: "まずボイスチャンネルに参加してからコマンドを実行してください。",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 		return
 	}
 
-	if err := timerManager.StartTimer(s, i.GuildID, channelID, i.ChannelID, dur); err != nil {
-		sendEphemeral(s, i, "タイマーの開始に失敗しました: "+err.Error())
-		return
-	}
-	sendEphemeral(s, i, "タイマーを開始します…")
+	// Defer the response to avoid interaction timeout and unblock the gateway
+	_ = e.DeferCreateMessage(true)
+	timerManager.StartTimer(e, guildID, channelID, dur)
 }
 
-// handleStopTimerCommand is invoked from the interaction handler in main.go
-func handleStopTimerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	// find the voice channel the invoking user is currently in
-	userID := i.Member.User.ID
-	guild, _ := s.State.Guild(i.GuildID)
-	var channelID string
-	if guild != nil {
-		for _, vs := range guild.VoiceStates {
-			if vs.UserID == userID {
-				channelID = vs.ChannelID
-				break
-			}
-		}
+func handleStopTimerCommand(e *events.ApplicationCommandInteractionCreate) {
+	userID := e.User().ID
+	guildID := *e.GuildID()
+	var channelID snowflake.ID
+
+	if vs, ok := e.Client().Caches.VoiceState(guildID, userID); ok && vs.ChannelID != nil {
+		channelID = *vs.ChannelID
 	}
 
-	if channelID == "" {
-		sendEphemeral(s, i, "まずボイスチャンネルに参加してからコマンドを実行してください。")
+	if channelID == 0 {
+		_ = e.CreateMessage(discord.MessageCreate{
+			Content: "まずボイスチャンネルに参加してからコマンドを実行してください。",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 		return
 	}
 
-	if err := timerManager.StopTimer(s, i.GuildID, channelID, i.ChannelID); err != nil {
-		sendEphemeral(s, i, "タイマーの停止に失敗しました: "+err.Error())
+	if err := timerManager.StopTimer(e.Client(), guildID, channelID); err != nil {
+		_ = e.CreateMessage(discord.MessageCreate{
+			Content: "タイマーの停止に失敗しました: " + err.Error(),
+			Flags:   discord.MessageFlagEphemeral,
+		})
 		return
 	}
-	sendEphemeral(s, i, "タイマーを停止します…")
+	_ = e.CreateMessage(discord.MessageCreate{
+		Content: "タイマーを停止しました",
+		Flags:   discord.MessageFlagEphemeral,
+	})
 }
 
-// handleListTimerCommand is invoked from the interaction handler in main.go
-func handleListTimerCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	// find the voice channel the invoking user is currently in
-	userID := i.Member.User.ID
-	guild, _ := s.State.Guild(i.GuildID)
-	var channelID string
-	if guild != nil {
-		for _, vs := range guild.VoiceStates {
-			if vs.UserID == userID {
-				channelID = vs.ChannelID
-				break
-			}
-		}
+func handleListTimerCommand(e *events.ApplicationCommandInteractionCreate) {
+	userID := e.User().ID
+	guildID := *e.GuildID()
+	var channelID snowflake.ID
+
+	if vs, ok := e.Client().Caches.VoiceState(guildID, userID); ok && vs.ChannelID != nil {
+		channelID = *vs.ChannelID
 	}
 
-	if channelID == "" {
-		sendEphemeral(s, i, "まずボイスチャンネルに参加してからコマンドを実行してください。")
+	if channelID == 0 {
+		_ = e.CreateMessage(discord.MessageCreate{
+			Content: "まずボイスチャンネルに参加してからコマンドを実行してください。",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 		return
 	}
 
-	if err := timerManager.ListTimer(s, i.GuildID, channelID, i.ChannelID); err != nil {
-		sendEphemeral(s, i, "持ち時間の表示に失敗しました: "+err.Error())
+	if err := timerManager.ListTimer(e.Client(), guildID, channelID); err != nil {
+		_ = e.CreateMessage(discord.MessageCreate{
+			Content: "持ち時間の表示に失敗しました: " + err.Error(),
+			Flags:   discord.MessageFlagEphemeral,
+		})
 		return
 	}
-	sendEphemeral(s, i, "持ち時間を表示します…")
+	_ = e.CreateMessage(discord.MessageCreate{
+		Content: "持ち時間を表示しました",
+		Flags:   discord.MessageFlagEphemeral,
+	})
 }
 
-// notifyAdmin sends a plain message to the configured admin channel (best-effort).
-func notifyAdmin(s *discordgo.Session, guildID, msg string) {
-	// Prefer guild's system channel if available
-	if guildID != "" {
-		if g, _ := s.State.Guild(guildID); g != nil {
-			if g.SystemChannelID != "" {
-				if _, err := s.ChannelMessageSend(g.SystemChannelID, msg); err == nil {
-					return
-				} else {
-					log.Println("notifyAdmin: send to system channel failed:", err)
-				}
-			}
-		}
-	}
-	// Final fallback: log
-	log.Println("notifyAdmin: no admin channel available; message:", msg)
+func updateInteractionResponse(e *events.ApplicationCommandInteractionCreate, content string) {
+	_, _ = e.Client().Rest.UpdateInteractionResponse(e.ApplicationID(), e.Token(), discord.MessageUpdate{
+		Content: &content,
+	})
 }
 
-// isBot attempts to determine whether a user is a bot/accounted-as-app.
-// It prefers cached state, falling back to API where necessary. If unknown,
-// it returns false (treat as human) to avoid false exclusions.
-func isBot(s *discordgo.Session, guildID, userID string) bool {
-	// try state member first
-	if guildID != "" {
-		if m, err := s.State.Member(guildID, userID); err == nil && m != nil && m.User != nil {
-			return m.User.Bot
-		}
+func isBot(client *bot.Client, guildID snowflake.ID, userID snowflake.ID) bool {
+	if m, ok := client.Caches.Member(guildID, userID); ok {
+		return m.User.Bot
 	}
-	// fallback to cached user
-	if u, err := s.User(userID); err == nil && u != nil {
-		return u.Bot
-	}
-	// if we can't determine, assume not a bot
 	return false
 }
