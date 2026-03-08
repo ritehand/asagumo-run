@@ -21,12 +21,11 @@ type SavedOverwrite struct {
 }
 
 type TimerSession struct {
-	Client     *bot.Client
-	Connection voice.Conn
-	GuildID    snowflake.ID
-	ChannelID  snowflake.ID
-	Total      time.Duration
-	Start      time.Time
+	Client    *bot.Client
+	GuildID   snowflake.ID
+	ChannelID snowflake.ID
+	Total     time.Duration
+	Start     time.Time
 
 	userSpeakingTime map[snowflake.ID]time.Duration
 	lastStart        map[snowflake.ID]time.Time
@@ -81,114 +80,86 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 	tm.mu.Unlock()
 
 	// Run voice connection and initialization in a separate goroutine to avoid gateway deadlock
-	go func() {
-		slog.Info("PHASE 1: StartTimer (async) called", "guildID", guildID, "channelID", channelID, "total", total)
+	// go func() {
+	slog.Info("PHASE 1: StartTimer (async) called", "guildID", guildID, "channelID", channelID, "total", total)
 
-		// Use a separate short timeout for connection establishment
-		connCtx, connCancel := context.WithTimeout(context.Background(), 25*time.Second)
-		defer connCancel()
+	// Use a separate short timeout for connection establishment
+	ctx, cancel := context.WithTimeout(context.Background(), total)
 
-		// CRITICAL: Explicitly close any existing connection to eliminate "zombie" websockets
-		if old := client.VoiceManager.GetConn(guildID); old != nil {
-			slog.Info("Closing and removing existing voice connection", "guildID", guildID)
-			old.Close(connCtx)
-			client.VoiceManager.RemoveConn(guildID)
-			// Wait a bit for the state to clear on Discord's side
-			time.Sleep(1 * time.Second)
-		}
+	conn := client.VoiceManager.CreateConn(guildID)
 
-		conn := client.VoiceManager.CreateConn(guildID)
+	slog.Info("PHASE 2: Conn opening...", "guildID", guildID)
+	// Open the voice gateway. Join UNMUTED and UN-DEAFENED to provide a standard state for DAVE handshake.
+	err := conn.Open(ctx, channelID, false, false)
+	if err != nil {
+		slog.Error("PHASE 2.5: Conn open failed", "error", err)
+		updateInteractionResponse(e, "ボイスチャンネルへの接続に失敗しました: "+err.Error())
+		cancel()
+		return
+	}
+	slog.Info("PHASE 3: Conn opened", "channelID", channelID)
 
-		slog.Info("PHASE 2: Conn opening...", "guildID", guildID)
-		// Open the voice gateway. Join UNMUTED and UN-DEAFENED to provide a standard state for DAVE handshake.
-		err := conn.Open(connCtx, channelID, false, false)
-		if err != nil {
-			slog.Error("PHASE 2.5: Conn open failed", "error", err)
-			conn.Close(context.Background()) // Close to prevent background reconnect attempts
-			tm.mu.Lock()
-			delete(tm.sessions, channelID)
-			tm.mu.Unlock()
-			updateInteractionResponse(e, "ボイスチャンネルへの接続に失敗しました: "+err.Error())
-			return
-		}
-		slog.Info("PHASE 3: Conn opened", "channelID", channelID)
+	// Check if the connection survived the handshake
+	if conn.Gateway().Status() != voice.StatusReady {
+		slog.Error("PHASE 3.5: Conn dropped during DAVE handshake", "status", conn.Gateway().Status())
+		updateInteractionResponse(e, "暗号化接続 (DAVE) の確立に失敗しました。時間をおいて再度お試しください。")
+		cancel()
+		return
+	}
 
-		// Wait for DAVE (E2EE) handshake to fully complete.
-		// DAVE often takes 2-4 seconds to stabilize on Mac.
-		time.Sleep(5 * time.Second)
+	session := &TimerSession{
+		Client:           client,
+		GuildID:          guildID,
+		ChannelID:        channelID,
+		Total:            total,
+		Start:            time.Now(),
+		userSpeakingTime: make(map[snowflake.ID]time.Duration),
+		lastStart:        make(map[snowflake.ID]time.Time),
+		allocated:        make(map[snowflake.ID]time.Duration),
+		participants:     make(map[snowflake.ID]bool),
+		muted:            make(map[snowflake.ID]bool),
+		savedOverwrites:  make(map[snowflake.ID]SavedOverwrite),
+		timers:           make(map[snowflake.ID]*time.Timer),
+		Active:           true,
+		cancel:           cancel,
+	}
 
-		// Check if the connection survived the handshake
-		if conn.Gateway().Status() != voice.StatusReady {
-			slog.Error("PHASE 3.5: Conn dropped during DAVE handshake", "status", conn.Gateway().Status())
-			tm.mu.Lock()
-			delete(tm.sessions, channelID)
-			tm.mu.Unlock()
-			updateInteractionResponse(e, "暗号化接続 (DAVE) の確立に失敗しました。時間をおいて再度お試しください。")
-			return
-		}
-
-		// Create the main timer context
-		timerCtx, timerCancel := context.WithTimeout(context.Background(), total)
-
-		session := &TimerSession{
-			Client:           client,
-			Connection:       conn,
-			GuildID:          guildID,
-			ChannelID:        channelID,
-			Total:            total,
-			Start:            time.Now(),
-			userSpeakingTime: make(map[snowflake.ID]time.Duration),
-			lastStart:        make(map[snowflake.ID]time.Time),
-			allocated:        make(map[snowflake.ID]time.Duration),
-			participants:     make(map[snowflake.ID]bool),
-			muted:            make(map[snowflake.ID]bool),
-			savedOverwrites:  make(map[snowflake.ID]SavedOverwrite),
-			timers:           make(map[snowflake.ID]*time.Timer),
-			Active:           true,
-			cancel:           timerCancel,
-		}
-
-		// Now that it's stable, set the event handler for participant tracking
-		conn.SetEventHandlerFunc(func(gateway voice.Gateway, opCode voice.Opcode, sequenceNumber int, data voice.GatewayMessageData) {
-			go func() {
-				if opCode == voice.OpcodeSpeaking {
-					if speaking, ok := data.(voice.GatewayMessageDataSpeaking); ok {
-						if speaking.Speaking > 0 {
-							timerManager.handleSpeakingStart(session, speaking.UserID)
-						} else {
-							timerManager.handleSpeakingStop(session, speaking.UserID)
-						}
-					}
+	// Now that it's stable, set the event handler for participant tracking
+	conn.SetEventHandlerFunc(func(gateway voice.Gateway, opCode voice.Opcode, seq int, data voice.GatewayMessageData) {
+		slog.Info("conn event", "opCode", opCode, "seq", seq)
+		if opCode == voice.OpcodeSpeaking {
+			if speaking, ok := data.(voice.GatewayMessageDataSpeaking); ok {
+				if (speaking.Speaking & voice.SpeakingFlagMicrophone) != 0 {
+					timerManager.handleSpeakingStart(session, speaking.UserID)
+				} else {
+					timerManager.handleSpeakingStop(session, speaking.UserID)
 				}
-			}()
-		})
-
-		per := total / time.Duration(len(participants))
-		for _, u := range participants {
-			session.participants[u] = true
-			session.allocated[u] = per
+			}
 		}
+	})
 
-		go session.run(timerCtx)
+	per := total / time.Duration(len(participants))
+	for _, u := range participants {
+		session.participants[u] = true
+		session.allocated[u] = per
+	}
 
-		tm.mu.Lock()
-		tm.sessions[channelID] = session
-		tm.mu.Unlock()
+	go session.run(ctx)
 
-		slog.Info("PHASE 4")
+	tm.mu.Lock()
+	tm.sessions[channelID] = session
+	tm.mu.Unlock()
 
-		embed := discord.NewEmbedBuilder().
-			SetTitle("タイマーを開始しました").
-			SetDescriptionf("合計 %v、参加者 %d、各自割当 %v", total, len(participants), per).
-			SetColor(0x00ff00).
-			SetFooterText("version: " + version).
-			Build()
+	embed := discord.NewEmbedBuilder().
+		SetTitle("タイマーを開始しました").
+		SetDescriptionf("合計 %v、参加者 %d、各自割当 %v", total, len(participants), per).
+		SetColor(0x00ff00).
+		SetFooterText("version: " + version).
+		Build()
 
-		slog.Info("PHASE 5")
-
-		updateInteractionResponse(e, "タイマーを開始しました")
-		_, _ = client.Rest.CreateMessage(channelID, discord.MessageCreate{Embeds: []discord.Embed{embed}})
-	}()
+	updateInteractionResponse(e, "タイマーを開始しました")
+	_, _ = client.Rest.CreateMessage(channelID, discord.MessageCreate{Embeds: []discord.Embed{embed}})
+	// }()
 }
 
 func (tm *TimerManager) StopTimer(client *bot.Client, guildID, channelID snowflake.ID) error {
@@ -241,6 +212,7 @@ func (ts *TimerSession) run(ctx context.Context) {
 	<-ctx.Done()
 	slog.Info("timer finished or canceled", "channel_id", ts.ChannelID)
 	ts.exit()
+	ts.cancel()
 }
 
 func (ts *TimerSession) exit() {
@@ -286,11 +258,6 @@ func (ts *TimerSession) exit() {
 		}
 		ts.mu.Unlock()
 	}
-
-	// Close connection with a timeout
-	closeCtx, closeCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer closeCancel()
-	ts.Connection.Close(closeCtx)
 
 	timerManager.mu.Lock()
 	delete(timerManager.sessions, ts.ChannelID)
@@ -481,7 +448,7 @@ func handleTimerCommand(e *events.ApplicationCommandInteractionCreate) {
 
 	// Defer the response to avoid interaction timeout and unblock the gateway
 	_ = e.DeferCreateMessage(true)
-	timerManager.StartTimer(e, guildID, channelID, dur)
+	go timerManager.StartTimer(e, guildID, channelID, dur)
 }
 
 func handleStopTimerCommand(e *events.ApplicationCommandInteractionCreate) {

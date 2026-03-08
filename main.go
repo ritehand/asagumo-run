@@ -1,14 +1,13 @@
 package main
 
+import "C"
 import (
 	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
-	"os/signal"
 	"runtime/debug"
-	"syscall"
 
 	"github.com/disgoorg/disgo"
 	"github.com/disgoorg/disgo/bot"
@@ -133,27 +132,18 @@ func main() {
 	}
 
 	// THE "KEEP-ALIVE" SERVER
-	go func() {
-		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			fmt.Fprintf(w, "Bot is healthy!")
-		})
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "Bot is healthy!")
+	})
 
-		port := os.Getenv("PORT")
-		if port == "" {
-			port = "8000"
-		}
-
-		fmt.Printf("Health check server listening on port %s\n", port)
-		if err := http.ListenAndServe(":"+port, nil); err != nil {
-			fmt.Printf("Health check server failed: %s\n", err)
-		}
-	}()
-
-	// Wait for a signal to quit
-	slog.Info("Bot is now running. Press CTRL-C to exit.")
-	sc := make(chan os.Signal, 1)
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
-	<-sc
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8000"
+	}
+	fmt.Printf("keep-alive server listening on port %s\n", port)
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
+		fmt.Printf("keep-alive server failed: %s\n", err)
+	}
 }
 
 func sendEphemeral(e *events.ApplicationCommandInteractionCreate, content string) {

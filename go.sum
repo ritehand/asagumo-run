@@ -4,8 +4,8 @@ github.com/disgoorg/disgo v0.19.2 h1:9FTTnYZ5RnLX6oybPr18d9+ht2KxIMkG/+HY0ADqTbM
 github.com/disgoorg/disgo v0.19.2/go.mod h1:rLCcf3vnlyfOTGw8ksVmq5UE5CMzBA0eeA9oeZ+N0x4=
 github.com/disgoorg/godave v0.1.1-0.20260214205329-977ec02b706f h1:sT/nak0/dnb/aJS3qKFk0ugjYLJhZyjFu3bVTJGdN+8=
 github.com/disgoorg/godave v0.1.1-0.20260214205329-977ec02b706f/go.mod h1:OreAC3hpabr39bMVA+jwOVDq1EUPXH5A0XUBiZaDI1Y=
-github.com/disgoorg/godave/golibdave v0.1.1-0.20260214205329-977ec02b706f h1:TzvwS5kpeVyrmRpb5txSmP8Qf+xQFGW3qxgluk1Egt0=
-github.com/disgoorg/godave/golibdave v0.1.1-0.20260214205329-977ec02b706f/go.mod h1:u9INYjfw/FE0Evjr3dWjaYsaVfQcX+zNf+ZNQjROt6A=
+github.com/disgoorg/godave/golibdave v0.1.0 h1:ga70vTb2pCdFgu+Jq8KteE9qLhezG5dI4H0vB/+6vBQ=
+github.com/disgoorg/godave/golibdave v0.1.0/go.mod h1:u9INYjfw/FE0Evjr3dWjaYsaVfQcX+zNf+ZNQjROt6A=
 github.com/disgoorg/godave/libdave v0.1.1-0.20260214205329-977ec02b706f h1:Mb3OQK5qtoqV+5dEQQB3Je9jlecr4epD1ukjMYNU/K8=
 github.com/disgoorg/godave/libdave v0.1.1-0.20260214205329-977ec02b706f/go.mod h1:CxundbQ722MpK3vD31kaOAxbu1+cFnnEKQDqQ7rpxEM=
 github.com/disgoorg/json/v2 v2.0.0 h1:U16yy/ARK7/aEpzjjqK1b/KaqqGHozUdeVw/DViEzQI=
