@@ -3,3 +3,4 @@ testdata/
 gen/*
 !gen/stub.go
 run
+build
