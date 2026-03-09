@@ -11,6 +11,10 @@ RUN apt-get update && apt-get install -y \
     cmake \
     make \
     g++ \
+    ninja \
+    zip \
+    perl \
+    nams \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -23,6 +27,10 @@ RUN chmod +x ./scripts/libdave_install.sh
 # The script installs to $HOME/.local (which is /root/.local in this container)
 # We set SHELL and NON_INTERACTIVE because the script has 'set -u'.
 # We set FORCE_BUILD=1 because prebuilt binaries might have GLIBC mismatches with the base image.
+ENV VCPKG_FORCE_SYSTEM_BINARIES=1
+ENV CC=/usr/bin/gcc
+ENV CXX=/usr/bin/g++
+ENV CXXFLAGS="-Wno-error=maybe-uninitialized"
 RUN SHELL=/bin/bash NON_INTERACTIVE=1 FORCE_BUILD=1 ./scripts/libdave_install.sh v1.1.0
 
 # Set environment variables for pkg-config and linker
