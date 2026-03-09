@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"log/slog"
 	"sync"
 	"time"
@@ -65,6 +66,7 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 			if isBot(client, guildID, vs.UserID) {
 				continue
 			}
+			log.Printf("participant: %v", vs.UserID)
 			participants = append(participants, vs.UserID)
 		}
 	}
@@ -126,9 +128,18 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 
 	// Now that it's stable, set the event handler for participant tracking
 	conn.SetEventHandlerFunc(func(gateway voice.Gateway, opCode voice.Opcode, seq int, data voice.GatewayMessageData) {
-		slog.Info("conn event", "opCode", opCode, "seq", seq)
 		if opCode == voice.OpcodeSpeaking {
 			if speaking, ok := data.(voice.GatewayMessageDataSpeaking); ok {
+				if isBot(client, guildID, speaking.UserID) {
+					return
+				}
+				var username string
+				if m, ok := client.Caches.Member(guildID, speaking.UserID); ok {
+					username = m.User.Username
+				} else {
+					username = speaking.UserID.String()
+				}
+				slog.Info("speaking", "speaking", speaking.Speaking, "username", username)
 				if (speaking.Speaking & voice.SpeakingFlagMicrophone) != 0 {
 					timerManager.handleSpeakingStart(session, speaking.UserID)
 				} else {
@@ -211,11 +222,11 @@ func (ts *TimerSession) run(ctx context.Context) {
 	slog.Info("timer starts", "channel_id", ts.ChannelID, "total", ts.Total)
 	<-ctx.Done()
 	slog.Info("timer finished or canceled", "channel_id", ts.ChannelID)
-	ts.exit()
 	ts.cancel()
+	ts.end()
 }
 
-func (ts *TimerSession) exit() {
+func (ts *TimerSession) end() {
 	ts.mu.Lock()
 	if !ts.Active {
 		ts.mu.Unlock()
@@ -229,6 +240,9 @@ func (ts *TimerSession) exit() {
 	ts.mu.Unlock()
 
 	slog.Info("timer exiting, closing connection", "channel_id", ts.ChannelID)
+	shortCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	go ts.Client.VoiceManager.Close(shortCtx)
 
 	embed := discord.NewEmbedBuilder().
 		SetTitle("全体の持ち時間が終了しました").
@@ -330,6 +344,9 @@ func (tm *TimerManager) muteLateJoiner(session *TimerSession, uid snowflake.ID) 
 }
 
 func (tm *TimerManager) muteUserNoLock(session *TimerSession, uid snowflake.ID, reason string) {
+	if !session.Active {
+		return
+	}
 	if session.muted[uid] {
 		return
 	}
@@ -386,6 +403,9 @@ func (tm *TimerManager) muteUserNoLock(session *TimerSession, uid snowflake.ID, 
 func (tm *TimerManager) muteUserFromTimer(session *TimerSession, uid snowflake.ID) {
 	session.mu.Lock()
 	defer session.mu.Unlock()
+	if !session.Active {
+		return
+	}
 	if start, ok := session.lastStart[uid]; ok && !start.IsZero() {
 		tm.muteUserNoLock(session, uid, "時間超過")
 	}
