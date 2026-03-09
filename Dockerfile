@@ -21,8 +21,9 @@ RUN chmod +x ./scripts/libdave_install.sh
 
 # Install libdave (v1.1.0 as requested)
 # The script installs to $HOME/.local (which is /root/.local in this container)
-# We set SHELL and NON_INTERACTIVE because the script has 'set -u' and expects these.
-RUN SHELL=/bin/bash NON_INTERACTIVE=1 ./scripts/libdave_install.sh v1.1.0
+# We set SHELL and NON_INTERACTIVE because the script has 'set -u'.
+# We set FORCE_BUILD=1 because prebuilt binaries might have GLIBC mismatches with the base image.
+RUN SHELL=/bin/bash NON_INTERACTIVE=1 FORCE_BUILD=1 ./scripts/libdave_install.sh v1.1.0
 
 # Set environment variables for pkg-config and linker
 ENV PKG_CONFIG_PATH=/root/.local/lib/pkgconfig
