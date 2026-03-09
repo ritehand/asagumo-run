@@ -1,21 +1,22 @@
 # Build stage
-FROM golang:1.24-bookworm AS builder
+FROM golang:1.24-alpine AS builder
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
+# Install build dependencies for Alpine
+# libdave build needs: git, curl, unzip, pkgconfig, cmake, make, g++, ninja, zip, perl, nasm
+RUN apk add --no-cache \
     git \
     curl \
     unzip \
-    pkg-config \
-    ca-certificates \
+    pkgconfig \
     cmake \
     make \
     g++ \
     ninja \
     zip \
     perl \
-    nams \
-    && rm -rf /var/lib/apt/lists/*
+    nasm \
+    ca-certificates \
+    linux-headers
 
 WORKDIR /app
 
@@ -23,17 +24,16 @@ WORKDIR /app
 COPY scripts/libdave_install.sh ./scripts/libdave_install.sh
 RUN chmod +x ./scripts/libdave_install.sh
 
-# Install libdave (v1.1.0 as requested)
-# The script installs to $HOME/.local (which is /root/.local in this container)
-# We set SHELL and NON_INTERACTIVE because the script has 'set -u'.
-# We set FORCE_BUILD=1 because prebuilt binaries might have GLIBC mismatches with the base image.
+# Install libdave (v1.1.0)
+# Force build from source for Alpine (musl compatibility)
 ENV VCPKG_FORCE_SYSTEM_BINARIES=1
 ENV CC=/usr/bin/gcc
 ENV CXX=/usr/bin/g++
 ENV CXXFLAGS="-Wno-error=maybe-uninitialized"
-RUN SHELL=/bin/bash NON_INTERACTIVE=1 FORCE_BUILD=1 ./scripts/libdave_install.sh v1.1.0
+RUN SHELL=/bin/sh NON_INTERACTIVE=1 FORCE_BUILD=1 ./scripts/libdave_install.sh v1.1.0
 
 # Set environment variables for pkg-config and linker
+# libdave_install.sh installs to $HOME/.local (which is /root/.local)
 ENV PKG_CONFIG_PATH=/root/.local/lib/pkgconfig
 ENV LD_LIBRARY_PATH=/root/.local/lib
 
@@ -46,12 +46,13 @@ COPY . .
 RUN go build -v -o asagumo-run .
 
 # Runtime stage
-FROM debian:bookworm-slim
+FROM alpine:latest
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y \
+RUN apk add --no-cache \
     ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    libstdc++ \
+    libgcc
 
 WORKDIR /app
 
@@ -61,10 +62,11 @@ COPY --from=builder /app/asagumo-run .
 # Copy libdave shared library from the builder stage
 COPY --from=builder /root/.local/lib/libdave.so /usr/local/lib/
 
-# Update library cache
-RUN ldconfig
+# Update library cache (Alpine doesn't use ldconfig in the same way, but placing in /usr/local/lib is standard)
+# We might need to set LD_LIBRARY_PATH in runtime too
+ENV LD_LIBRARY_PATH=/usr/local/lib
 
-# Set the port (default to 8000 as per main.go)
+# Set the port
 ENV PORT=8000
 EXPOSE 8000
 
