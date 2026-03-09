@@ -1,67 +1,56 @@
-# builder stage
-FROM golang:1.24-bookworm AS builder
+# Build stage (Ubuntu 24.04 を使用して GLIBC バージョンを合わせる)
+FROM ubuntu:24.04 AS builder
 
 ARG LIBDAVE_VERSION=v1.1.0
+ARG GO_VERSION=1.24.0
 
 ENV DEBIAN_FRONTEND=noninteractive \
     CGO_ENABLED=1 \
     PKG_CONFIG_PATH=/root/.local/lib/pkgconfig \
-    SHELL=/bin/sh
+    PATH=$PATH:/usr/local/go/bin
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
-        ca-certificates \
-        cmake \
-        curl \
-        git \
-        make \
-        nasm \
-        pkg-config \
-        unzip \
-        zip \
+# 必要なパッケージと Go のインストール
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    curl \
+    git \
+    pkg-config \
+    unzip \
+    && curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -C /usr/local -xzf - \
     && rm -rf /var/lib/apt/lists/*
 
-# Install libdave using the remote script
+# libdave のインストール (FORCE_BUILD=1 を外す)
 RUN curl -fsSL -o /tmp/libdave_install.sh https://raw.githubusercontent.com/disgoorg/godave/refs/heads/master/scripts/libdave_install.sh \
     && chmod +x /tmp/libdave_install.sh \
-    && FORCE_BUILD=1 NON_INTERACTIVE=1 /tmp/libdave_install.sh ${LIBDAVE_VERSION} \
+    && NON_INTERACTIVE=1 SHELL=/bin/sh /tmp/libdave_install.sh ${LIBDAVE_VERSION} \
     && rm -f /tmp/libdave_install.sh
 
-# Download Go modules
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source code and build
 COPY . .
 RUN go build -trimpath -o asagumo-run .
 
-# Runtime stage (Switching to debian-slim to match the builder's glibc)
-FROM debian:bookworm-slim
+# Runtime stage (ビルド時と同じ Ubuntu 24.04 を使用)
+FROM ubuntu:24.04
 
-# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy the binary from the builder stage
 COPY --from=builder /app/asagumo-run .
-
-# Copy libdave shared library from the builder stage
 COPY --from=builder /root/.local/lib/libdave.so /usr/local/lib/
 
-# Update library cache
+# ライブラリパスの設定
+ENV LD_LIBRARY_PATH=/usr/local/lib
 RUN ldconfig
 
-ENV LD_LIBRARY_PATH=/usr/local/lib
 ENV PORT=8000
 EXPOSE 8000
 
-# Run the application
 CMD ["./asagumo-run"]
