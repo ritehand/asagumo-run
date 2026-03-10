@@ -163,6 +163,12 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 		return
 	}
 
+	// Force the SFU to recognize us as an active participant by toggling speaking state.
+	// This often resolves issues where the SFU suppresses OpCode 5 events.
+	_ = conn.SetSpeaking(ctx, voice.SpeakingFlagMicrophone)
+	time.Sleep(200 * time.Millisecond)
+	_ = conn.SetSpeaking(ctx, voice.SpeakingFlagNone)
+
 	session := &TimerSession{
 		ctx:              ctx,
 		cancel:           cancel,
@@ -200,13 +206,6 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 		session.allocated[u] = per
 		session.userSpeakingTime[u] = 0
 	}
-
-	// Force the SFU to recognize us as an active participant by toggling speaking state.
-	// This often resolves issues where the SFU suppresses OpCode 5 events.
-	// TODO: remove this
-	// _ = conn.SetSpeaking(ctx, voice.SpeakingFlagMicrophone)
-	// time.Sleep(200 * time.Millisecond)
-	// _ = conn.SetSpeaking(ctx, voice.SpeakingFlagNone)
 
 	// Start the session
 	go func() {
