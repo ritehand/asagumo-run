@@ -236,17 +236,28 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 
 	tm.mu.Lock()
 	tm.sessions[channelID] = session
-	tm.mu.Unlock()
 
 	embed := discord.NewEmbedBuilder().
 		SetTitle("タイマーを開始しました").
-		SetDescriptionf("合計 %v、参加者 %d、各自割当 %v", total, len(participants), per).
+		SetDescriptionf("制限時間 %v (参加者 %d人)", total, len(session.participants)).
 		SetColor(0x00ff00).
-		SetFooterText("version: " + version).
-		Build()
+		SetFooterText("version: " + version)
+	for uid, participating := range session.participants {
+		if participating {
+			var username string
+			if m, ok := e.Client().Caches.Member(guildID, uid); ok {
+				username = m.User.Username
+			} else {
+				username = uid.String()
+			}
+			userRemain := (session.allocated[uid] - session.userSpeakingTime[uid]).Round(time.Second)
+			embed.AddField(username, fmt.Sprintf("%v", userRemain), true)
+		}
+	}
+	tm.mu.Unlock()
 
+	_, _ = client.Rest.CreateMessage(channelID, discord.MessageCreate{Embeds: []discord.Embed{embed.Build()}})
 	tm.updateInteractionResponse(e, "タイマーを開始しました")
-	_, _ = client.Rest.CreateMessage(channelID, discord.MessageCreate{Embeds: []discord.Embed{embed}})
 }
 
 func (tm *TimerManager) StopTimer(e *events.ApplicationCommandInteractionCreate, guildID, channelID snowflake.ID) {
@@ -268,7 +279,7 @@ func (tm *TimerManager) ShowTimer(e *events.ApplicationCommandInteractionCreate,
 	if ok && session != nil {
 		eb := discord.NewEmbedBuilder().
 			SetTitle("持ち時間").
-			SetColor(0x00ff00).
+			SetColor(0x0000ff).
 			SetFooterText("version: " + version)
 
 		session.mu.Lock()
@@ -542,7 +553,7 @@ func (session *TimerSession) end() {
 	go session.Client.VoiceManager.Close(shortCtx)
 
 	embed := discord.NewEmbedBuilder().
-		SetTitle("全体の持ち時間が終了しました").
+		SetTitle("タイマーが終了しました").
 		SetDescription("ミュート設定を解除します").
 		SetColor(0xff0000).
 		SetFooterText("version: " + version).

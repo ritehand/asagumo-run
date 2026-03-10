@@ -6,7 +6,7 @@ require (
 	github.com/disgoorg/disgo v0.19.2
 	github.com/disgoorg/godave/golibdave v0.1.0
 	github.com/disgoorg/snowflake/v2 v2.0.3
-	github.com/ritehand/asagumo v0.1.2
+	github.com/ritehand/asagumo v0.2.0
 )
 
 require (
