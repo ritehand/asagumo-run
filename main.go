@@ -46,7 +46,7 @@ func main() {
 		handleStopTimerCommand(e.ApplicationCommandInteractionCreate)
 		return nil
 	})
-	h.Command("/list_timer", func(e *handler.CommandEvent) error {
+	h.Command("/show_timer", func(e *handler.CommandEvent) error {
 		handleListTimerCommand(e.ApplicationCommandInteractionCreate)
 		return nil
 	})
@@ -71,7 +71,7 @@ func main() {
 		bot.WithVoiceManagerConfigOpts(
 			voice.WithDaveSessionCreateFunc(golibdave.NewSession),
 			voice.WithDaveSessionLogger(slog.Default()),
-			voice.WithConnConfigOpts(voice.WithConnGatewayConfigOpts(voice.WithGatewayAutoReconnect(false))),
+			voice.WithConnConfigOpts(voice.WithConnGatewayConfigOpts(voice.WithGatewayAutoReconnect(true))),
 		),
 		bot.WithEventListeners(h),
 		bot.WithEventListenerFunc(func(e *events.GuildVoiceStateUpdate) {
@@ -119,7 +119,7 @@ func main() {
 			Description: "タイマーを終了します",
 		},
 		discord.SlashCommandCreate{
-			Name:        "list_timer",
+			Name:        "show_timer",
 			Description: "残りの持ち時間を表示します",
 		},
 	}
