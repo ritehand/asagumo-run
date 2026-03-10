@@ -146,7 +146,7 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 
 	slog.Info("PHASE 2: Conn opening...", "guildID", guildID)
 	// Open the voice gateway. Join UNMUTED and UN-DEAFENED to provide a standard state for DAVE handshake.
-	err := conn.Open(ctx, channelID, false, false) // TODO: mute
+	err := conn.Open(ctx, channelID, true, false)
 	if err != nil {
 		slog.Error("PHASE 2.5: Conn open failed", "error", err)
 		tm.updateInteractionResponse(e, "ボイスチャンネルへの接続に失敗しました: "+err.Error())
@@ -204,9 +204,9 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 	// Force the SFU to recognize us as an active participant by toggling speaking state.
 	// This often resolves issues where the SFU suppresses OpCode 5 events.
 	// TODO: remove this
-	_ = conn.SetSpeaking(ctx, voice.SpeakingFlagMicrophone)
-	time.Sleep(200 * time.Millisecond)
-	_ = conn.SetSpeaking(ctx, voice.SpeakingFlagNone)
+	// _ = conn.SetSpeaking(ctx, voice.SpeakingFlagMicrophone)
+	// time.Sleep(200 * time.Millisecond)
+	// _ = conn.SetSpeaking(ctx, voice.SpeakingFlagNone)
 
 	// Start the session
 	go func() {
