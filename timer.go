@@ -99,9 +99,10 @@ var timerManager = &TimerManager{sessions: make(map[snowflake.ID]*TimerSession)}
 
 func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate, guildID, channelID snowflake.ID, total time.Duration) {
 	tm.mu.Lock()
-	if _, ok := tm.sessions[channelID]; ok {
+	if s, ok := tm.sessions[channelID]; ok {
+		s.cancel()
 		tm.mu.Unlock()
-		tm.updateInteractionResponse(e, "このチャンネルでは既にタイマーが動作中です")
+		tm.updateInteractionResponse(e, "既に作動中のタイマーをキャンセルします")
 		return
 	}
 
@@ -264,8 +265,8 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 func (tm *TimerManager) StopTimer(e *events.ApplicationCommandInteractionCreate, guildID, channelID snowflake.ID) {
 	tm.mu.Lock()
 	if session, ok := tm.sessions[channelID]; ok && session != nil {
-		tm.mu.Unlock()
 		session.cancel()
+		tm.mu.Unlock()
 		tm.updateInteractionResponse(e, "タイマーを停止しました")
 		return
 	}
