@@ -172,6 +172,7 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 	session := &TimerSession{
 		ctx:              ctx,
 		cancel:           cancel,
+		conn:             conn,
 		Active:           true,
 		Client:           client,
 		GuildID:          guildID,
@@ -208,30 +209,31 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 	}
 
 	// Start the session
-	go func() {
+	go func(s *TimerSession) {
 		slog.Info("session is started", "channel", session.ChannelID)
 		defer slog.Info("session is finished", "channel", session.ChannelID)
 		for {
 			select {
-			case <-session.ctx.Done():
-				session.end()
-				session.cancel()
+			case <-s.ctx.Done():
+				s.end()
+				s.cancel()
 				return
 			default:
-				pkt, err := conn.UDP().ReadPacket()
+				pkt, err := s.conn.UDP().ReadPacket()
 				if err != nil {
+					s.cancel()
 					continue
 				}
-				if uid, ok := session.ssrcToUser[pkt.SSRC]; ok {
-					if ok := session.participants[uid]; !ok {
+				if uid, ok := s.ssrcToUser[pkt.SSRC]; ok {
+					if _, ok := s.participants[uid]; !ok {
 						continue
 					}
-					dur := session.opusDuration(pkt.Opus)
-					session.addSpeakingTime(uid, dur)
+					dur := s.opusDuration(pkt.Opus)
+					s.addSpeakingTime(uid, dur)
 				}
 			}
 		}
-	}()
+	}(session)
 
 	tm.mu.Lock()
 	tm.sessions[channelID] = session
@@ -348,6 +350,8 @@ type TimerSession struct {
 	mu     sync.Mutex
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	conn voice.Conn
 
 	Active    bool
 	Client    *bot.Client
@@ -549,7 +553,7 @@ func (session *TimerSession) end() {
 	slog.Info("timer exiting, closing connection", "channel_id", session.ChannelID)
 	shortCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	go session.Client.VoiceManager.Close(shortCtx)
+	go session.conn.Close(shortCtx)
 
 	embed := discord.NewEmbedBuilder().
 		SetTitle("タイマーが終了しました").
