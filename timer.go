@@ -17,7 +17,9 @@ import (
 
 const sampleRate = 48000 // 48kHz as Discord uses
 
-func handleTimerCommand(e *events.ApplicationCommandInteractionCreate) {
+var timerManager = &TimerManager{sessions: make(map[snowflake.ID]*TimerSession)}
+
+func commandTimer(e *events.ApplicationCommandInteractionCreate) {
 	data := e.SlashCommandInteractionData()
 	input, _ := data.OptString(optionNameDuration)
 	dur, err := time.ParseDuration(input)
@@ -49,7 +51,7 @@ func handleTimerCommand(e *events.ApplicationCommandInteractionCreate) {
 	go timerManager.StartTimer(e, guildID, channelID, dur)
 }
 
-func handleStopTimerCommand(e *events.ApplicationCommandInteractionCreate) {
+func commandStopTimer(e *events.ApplicationCommandInteractionCreate) {
 	userID := e.User().ID
 	guildID := *e.GuildID()
 	var channelID snowflake.ID
@@ -70,7 +72,7 @@ func handleStopTimerCommand(e *events.ApplicationCommandInteractionCreate) {
 	go timerManager.StopTimer(e, guildID, channelID)
 }
 
-func handleListTimerCommand(e *events.ApplicationCommandInteractionCreate) {
+func commandShowTimer(e *events.ApplicationCommandInteractionCreate) {
 	userID := e.User().ID
 	guildID := *e.GuildID()
 	var channelID snowflake.ID
@@ -94,8 +96,6 @@ type TimerManager struct {
 	mu       sync.Mutex
 	sessions map[snowflake.ID]*TimerSession // key: channelID
 }
-
-var timerManager = &TimerManager{sessions: make(map[snowflake.ID]*TimerSession)}
 
 func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate, guildID, channelID snowflake.ID, total time.Duration) {
 	tm.mu.Lock()
@@ -147,7 +147,7 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 
 	slog.Info("PHASE 2: Conn opening...", "guildID", guildID)
 	// Open the voice gateway. Join UNMUTED and UN-DEAFENED to provide a standard state for DAVE handshake.
-	err := conn.Open(ctx, channelID, true, false)
+	err := conn.Open(ctx, channelID, false, false)
 	if err != nil {
 		slog.Error("PHASE 2.5: Conn open failed", "error", err)
 		tm.updateInteractionResponse(e, "ボイスチャンネルへの接続に失敗しました: "+err.Error())
@@ -190,6 +190,11 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 
 	// Link user IDs to SSRCs when they notify to start speaking
 	conn.SetEventHandlerFunc(func(gateway voice.Gateway, opCode voice.Opcode, seq int, data voice.GatewayMessageData) {
+		status := gateway.Status()
+		if status == voice.StatusDisconnected || status == voice.StatusUnconnected {
+			session.cancel()
+			return
+		}
 		if opCode == voice.OpcodeSpeaking {
 			if speaking, ok := data.(voice.GatewayMessageDataSpeaking); ok {
 				uid := speaking.UserID
@@ -211,8 +216,8 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 
 	// Start the session
 	go func(s *TimerSession) {
-		slog.Info("session is started", "channel", session.ChannelID)
-		defer slog.Info("session is finished", "channel", session.ChannelID)
+		slog.Info("session is started", "channel", s.ChannelID)
+		defer slog.Info("session is finished", "channel", s.ChannelID)
 		for {
 			select {
 			case <-s.ctx.Done():

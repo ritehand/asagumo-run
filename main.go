@@ -39,15 +39,15 @@ func main() {
 		return nil
 	})
 	h.Command("/timer", func(e *handler.CommandEvent) error {
-		handleTimerCommand(e.ApplicationCommandInteractionCreate)
+		commandTimer(e.ApplicationCommandInteractionCreate)
 		return nil
 	})
 	h.Command("/stop_timer", func(e *handler.CommandEvent) error {
-		handleStopTimerCommand(e.ApplicationCommandInteractionCreate)
+		commandStopTimer(e.ApplicationCommandInteractionCreate)
 		return nil
 	})
 	h.Command("/show_timer", func(e *handler.CommandEvent) error {
-		handleListTimerCommand(e.ApplicationCommandInteractionCreate)
+		commandShowTimer(e.ApplicationCommandInteractionCreate)
 		return nil
 	})
 
@@ -71,7 +71,7 @@ func main() {
 		bot.WithVoiceManagerConfigOpts(
 			voice.WithDaveSessionCreateFunc(golibdave.NewSession),
 			voice.WithDaveSessionLogger(slog.Default()),
-			voice.WithConnConfigOpts(voice.WithConnGatewayConfigOpts(voice.WithGatewayAutoReconnect(true))),
+			// voice.WithConnConfigOpts(voice.WithConnGatewayConfigOpts(voice.WithGatewayAutoReconnect(true))),
 		),
 		bot.WithEventListeners(h),
 		bot.WithEventListenerFunc(func(e *events.GuildVoiceStateUpdate) {
