@@ -187,11 +187,7 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 
 	// Link user IDs to SSRCs when they notify to start speaking
 	conn.SetEventHandlerFunc(func(gateway voice.Gateway, opCode voice.Opcode, seq int, data voice.GatewayMessageData) {
-		status := gateway.Status()
-		if status == voice.StatusDisconnected || status == voice.StatusUnconnected {
-			session.cancel()
-			return
-		}
+		slog.Info("voice event", "opCode", opCode, "seq", seq)
 		if opCode == voice.OpcodeSpeaking {
 			if speaking, ok := data.(voice.GatewayMessageDataSpeaking); ok {
 				uid := speaking.UserID
@@ -213,8 +209,8 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 
 	// Start the session
 	go func() {
-		slog.Info("session is started", "channel", session.ChannelID)
-		defer slog.Info("session is finished", "channel", session.ChannelID)
+		slog.Info("loop is started", "channel", session.ChannelID)
+		defer slog.Info("loop is finished", "channel", session.ChannelID)
 		for {
 			select {
 			case <-ctx.Done():
@@ -222,18 +218,28 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 				cancel()
 				return
 			default:
-				pkt, err := session.conn.UDP().ReadPacket()
-				if err != nil {
-					session.cancel()
+			}
+
+			// ReadPacket はブロッキング呼び出しのため、デッドラインを設けて
+			// 定期的にループ先頭へ戻り ctx.Done() をチェックできるようにする
+			deadline := time.Now().Add(200 * time.Millisecond)
+			if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+				deadline = d
+			}
+			_ = session.conn.UDP().SetReadDeadline(deadline)
+
+			pkt, err := session.conn.UDP().ReadPacket()
+			if err != nil {
+				// タイムアウト・一時エラーはループ継続
+				continue
+			}
+			slog.Info("reading packet", "seq", pkt.Sequence)
+			if uid, ok := session.ssrcToUser[pkt.SSRC]; ok {
+				if _, ok := session.participants[uid]; !ok {
 					continue
 				}
-				if uid, ok := session.ssrcToUser[pkt.SSRC]; ok {
-					if _, ok := session.participants[uid]; !ok {
-						continue
-					}
-					dur := session.opusDuration(pkt.Opus)
-					session.addSpeakingTime(uid, dur)
-				}
+				dur := session.opusDuration(pkt.Opus)
+				session.addSpeakingTime(uid, dur)
 			}
 		}
 	}()
@@ -262,12 +268,12 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 
 	_, _ = client.Rest.CreateMessage(channelID, discord.MessageCreate{Embeds: []discord.Embed{embed.Build()}})
 	tm.updateInteractionResponse(e, "タイマーを開始しました")
+	slog.Info("startTimer ends")
 }
 
 func (tm *TimerManager) StopTimer(e *events.ApplicationCommandInteractionCreate, guildID, channelID snowflake.ID) {
 	tm.mu.Lock()
 	if session, ok := tm.sessions[channelID]; ok && session != nil {
-		session.end()
 		session.cancel()
 		tm.mu.Unlock()
 		tm.updateInteractionResponse(e, "タイマーを停止しました")
@@ -275,6 +281,7 @@ func (tm *TimerManager) StopTimer(e *events.ApplicationCommandInteractionCreate,
 	}
 	tm.mu.Unlock()
 	tm.updateInteractionResponse(e, "このチャンネルでは現在タイマーが作動していません")
+	slog.Info("StopTimer ends")
 }
 
 func (tm *TimerManager) ShowTimer(e *events.ApplicationCommandInteractionCreate, guildID, channelID snowflake.ID) {
@@ -310,6 +317,7 @@ func (tm *TimerManager) ShowTimer(e *events.ApplicationCommandInteractionCreate,
 		return
 	}
 	tm.updateInteractionResponse(e, "このチャンネルでは現在タイマーが作動していません")
+	slog.Info("ShowTimer ends")
 }
 
 func (tm *TimerManager) HandleVoiceStateUpdate(client *bot.Client, e *events.GuildVoiceStateUpdate) {
@@ -541,6 +549,7 @@ func (session *TimerSession) muteUser(uid snowflake.ID, reason string) {
 }
 
 func (session *TimerSession) end() {
+	slog.Info("session ends", "channel", session.ChannelID)
 	session.mu.Lock()
 	if !session.Active {
 		session.mu.Unlock()
