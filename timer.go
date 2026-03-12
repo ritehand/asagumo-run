@@ -121,7 +121,7 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 				continue
 			}
 			var username string
-			if m, ok := client.Caches.Member(guildID, vs.UserID); ok {
+			if m, ok := getMember(client, guildID, vs.UserID); ok {
 				username = m.User.Username
 			} else {
 				username = vs.UserID.String()
@@ -602,9 +602,22 @@ func (session *TimerSession) end() {
 	slog.Info("timer session completely removed", "channel_id", session.ChannelID)
 }
 
-func isBot(client *bot.Client, guildID snowflake.ID, userID snowflake.ID) bool {
+func getMember(client *bot.Client, guildID snowflake.ID, userID snowflake.ID) (discord.Member, bool) {
 	if m, ok := client.Caches.Member(guildID, userID); ok {
+		return m, true
+	}
+	// キャッシュにない場合はREST APIにフォールバック
+	m, err := client.Rest.GetMember(guildID, userID)
+	if err != nil || m == nil {
+		return discord.Member{}, false
+	}
+	return *m, true
+}
+
+func isBot(client *bot.Client, guildID snowflake.ID, userID snowflake.ID) bool {
+	if m, ok := getMember(client, guildID, userID); ok {
 		return m.User.Bot
 	}
-	return false
+	// メンバー情報が取得できない場合はBOTとみなして除外する
+	return true
 }
