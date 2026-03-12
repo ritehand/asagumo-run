@@ -20,6 +20,8 @@ const sampleRate = 48000 // 48kHz as Discord uses
 var timerManager = &TimerManager{sessions: make(map[snowflake.ID]*TimerSession)}
 
 func commandTimer(e *events.ApplicationCommandInteractionCreate) {
+	snum := len(timerManager.sessions)
+	slog.Info("commandTimer", "sessions", snum)
 	data := e.SlashCommandInteractionData()
 	input, _ := data.OptString(optionNameDuration)
 	dur, err := time.ParseDuration(input)
@@ -52,6 +54,8 @@ func commandTimer(e *events.ApplicationCommandInteractionCreate) {
 }
 
 func commandStopTimer(e *events.ApplicationCommandInteractionCreate) {
+	snum := len(timerManager.sessions)
+	slog.Info("commandStopTimer", "sessions", snum)
 	userID := e.User().ID
 	guildID := *e.GuildID()
 	var channelID snowflake.ID
@@ -73,6 +77,8 @@ func commandStopTimer(e *events.ApplicationCommandInteractionCreate) {
 }
 
 func commandShowTimer(e *events.ApplicationCommandInteractionCreate) {
+	snum := len(timerManager.sessions)
+	slog.Info("commandShowTimer", "sessions", snum)
 	userID := e.User().ID
 	guildID := *e.GuildID()
 	var channelID snowflake.ID
@@ -163,7 +169,6 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 	ctx, cancel := context.WithTimeout(context.Background(), total)
 
 	session := &TimerSession{
-		ctx:              ctx,
 		cancel:           cancel,
 		conn:             conn,
 		Active:           true,
@@ -325,7 +330,7 @@ func (tm *TimerManager) HandleVoiceStateUpdate(client *bot.Client, e *events.Gui
 		session.mu.Lock()
 		defer session.mu.Unlock()
 
-		if session.participants[e.VoiceState.UserID] {
+		if _, ok := session.participants[e.VoiceState.UserID]; ok {
 			return
 		}
 
@@ -347,7 +352,6 @@ type SavedOverwrite struct {
 
 type TimerSession struct {
 	mu     sync.Mutex
-	ctx    context.Context
 	cancel context.CancelFunc
 
 	conn voice.Conn
