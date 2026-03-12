@@ -27,7 +27,7 @@ func commandTimer(e *events.ApplicationCommandInteractionCreate) {
 	dur, err := time.ParseDuration(input)
 	if err != nil {
 		_ = e.CreateMessage(discord.MessageCreate{
-			Content: "有効な時間を指定してください。例: 30m, 1h",
+			Content: "有効な時間を指定してください 例: 30m, 1h",
 			Flags:   discord.MessageFlagEphemeral,
 		})
 		return
@@ -42,7 +42,7 @@ func commandTimer(e *events.ApplicationCommandInteractionCreate) {
 	}
 	if channelID == 0 {
 		_ = e.CreateMessage(discord.MessageCreate{
-			Content: "まずボイスチャンネルに参加してからコマンドを実行してください。",
+			Content: "まずボイスチャンネルに参加してからコマンドを実行してください",
 			Flags:   discord.MessageFlagEphemeral,
 		})
 		return
@@ -66,7 +66,7 @@ func commandStopTimer(e *events.ApplicationCommandInteractionCreate) {
 
 	if channelID == 0 {
 		_ = e.CreateMessage(discord.MessageCreate{
-			Content: "まずボイスチャンネルに参加してからコマンドを実行してください。",
+			Content: "まずボイスチャンネルに参加してからコマンドを実行してください",
 			Flags:   discord.MessageFlagEphemeral,
 		})
 		return
@@ -89,7 +89,7 @@ func commandShowTimer(e *events.ApplicationCommandInteractionCreate) {
 
 	if channelID == 0 {
 		_ = e.CreateMessage(discord.MessageCreate{
-			Content: "まずボイスチャンネルに参加してからコマンドを実行してください。",
+			Content: "まずボイスチャンネルに参加してからコマンドを実行してください",
 			Flags:   discord.MessageFlagEphemeral,
 		})
 		return
@@ -155,7 +155,7 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 
 	// Check if the connection survived the handshake
 	if conn.Gateway().Status() != voice.StatusReady {
-		tm.updateInteractionResponse(e, "暗号化接続 (DAVE) の確立に失敗しました。時間をおいて再度お試しください。")
+		tm.updateInteractionResponse(e, "暗号化接続 (DAVE) の確立に失敗しました。時間をおいて再度お試しください")
 		return
 	}
 
@@ -226,18 +226,20 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 			if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
 				deadline = d
 			}
-			_ = session.conn.UDP().SetReadDeadline(deadline)
+			if err := session.conn.UDP().SetReadDeadline(deadline); err != nil {
+				continue
+			}
 
 			pkt, err := session.conn.UDP().ReadPacket()
 			if err != nil {
 				// タイムアウト・一時エラーはループ継続
 				continue
 			}
-			slog.Info("reading packet", "seq", pkt.Sequence)
 			if uid, ok := session.ssrcToUser[pkt.SSRC]; ok {
 				if _, ok := session.participants[uid]; !ok {
 					continue
 				}
+				slog.Info("opus", "len", len(pkt.Opus), "seq", pkt.Sequence)
 				dur := session.opusDuration(pkt.Opus)
 				session.addSpeakingTime(uid, dur)
 			}
