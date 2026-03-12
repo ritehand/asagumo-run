@@ -99,10 +99,9 @@ type TimerManager struct {
 
 func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate, guildID, channelID snowflake.ID, total time.Duration) {
 	tm.mu.Lock()
-	if s, ok := tm.sessions[channelID]; ok {
-		s.cancel()
+	if _, ok := tm.sessions[channelID]; ok {
 		tm.mu.Unlock()
-		tm.updateInteractionResponse(e, "既に作動中のタイマーをキャンセルします")
+		tm.updateInteractionResponse(e, "既にタイマーが作動中です")
 		return
 	}
 
@@ -136,39 +135,32 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 	tm.sessions[channelID] = nil
 	tm.mu.Unlock()
 
-	// Run voice connection and initialization in a separate goroutine to avoid gateway deadlock
-	// go func() {
-	slog.Info("PHASE 1: StartTimer (async) called", "guildID", guildID, "channelID", channelID, "total", total)
-
-	// Use a separate short timeout for connection establishment
-	ctx, cancel := context.WithTimeout(context.Background(), total)
-
 	conn := client.VoiceManager.CreateConn(guildID)
 
-	slog.Info("PHASE 2: Conn opening...", "guildID", guildID)
+	shortCtx, shortCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shortCancel()
 	// Open the voice gateway. Join UNMUTED and UN-DEAFENED to provide a standard state for DAVE handshake.
-	err := conn.Open(ctx, channelID, false, false)
+	err := conn.Open(shortCtx, channelID, false, false)
 	if err != nil {
-		slog.Error("PHASE 2.5: Conn open failed", "error", err)
 		tm.updateInteractionResponse(e, "ボイスチャンネルへの接続に失敗しました: "+err.Error())
-		cancel()
 		return
 	}
 	slog.Info("PHASE 3: Conn opened", "channelID", channelID)
 
 	// Check if the connection survived the handshake
 	if conn.Gateway().Status() != voice.StatusReady {
-		slog.Error("PHASE 3.5: Conn dropped during DAVE handshake", "status", conn.Gateway().Status())
 		tm.updateInteractionResponse(e, "暗号化接続 (DAVE) の確立に失敗しました。時間をおいて再度お試しください。")
-		cancel()
 		return
 	}
 
 	// Force the SFU to recognize us as an active participant by toggling speaking state.
 	// This often resolves issues where the SFU suppresses OpCode 5 events.
-	_ = conn.SetSpeaking(ctx, voice.SpeakingFlagMicrophone)
+	_ = conn.SetSpeaking(shortCtx, voice.SpeakingFlagMicrophone)
 	time.Sleep(200 * time.Millisecond)
-	_ = conn.SetSpeaking(ctx, voice.SpeakingFlagNone)
+	_ = conn.SetSpeaking(shortCtx, voice.SpeakingFlagNone)
+
+	// Use a separate short timeout for connection establishment
+	ctx, cancel := context.WithTimeout(context.Background(), total)
 
 	session := &TimerSession{
 		ctx:              ctx,
@@ -215,31 +207,31 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 	}
 
 	// Start the session
-	go func(s *TimerSession) {
-		slog.Info("session is started", "channel", s.ChannelID)
-		defer slog.Info("session is finished", "channel", s.ChannelID)
+	go func() {
+		slog.Info("session is started", "channel", session.ChannelID)
+		defer slog.Info("session is finished", "channel", session.ChannelID)
 		for {
 			select {
-			case <-s.ctx.Done():
-				s.end()
-				s.cancel()
+			case <-ctx.Done():
+				session.end()
+				cancel()
 				return
 			default:
-				pkt, err := s.conn.UDP().ReadPacket()
+				pkt, err := session.conn.UDP().ReadPacket()
 				if err != nil {
-					s.cancel()
+					session.cancel()
 					continue
 				}
-				if uid, ok := s.ssrcToUser[pkt.SSRC]; ok {
-					if _, ok := s.participants[uid]; !ok {
+				if uid, ok := session.ssrcToUser[pkt.SSRC]; ok {
+					if _, ok := session.participants[uid]; !ok {
 						continue
 					}
-					dur := s.opusDuration(pkt.Opus)
-					s.addSpeakingTime(uid, dur)
+					dur := session.opusDuration(pkt.Opus)
+					session.addSpeakingTime(uid, dur)
 				}
 			}
 		}
-	}(session)
+	}()
 
 	tm.mu.Lock()
 	tm.sessions[channelID] = session
@@ -270,6 +262,7 @@ func (tm *TimerManager) StartTimer(e *events.ApplicationCommandInteractionCreate
 func (tm *TimerManager) StopTimer(e *events.ApplicationCommandInteractionCreate, guildID, channelID snowflake.ID) {
 	tm.mu.Lock()
 	if session, ok := tm.sessions[channelID]; ok && session != nil {
+		session.end()
 		session.cancel()
 		tm.mu.Unlock()
 		tm.updateInteractionResponse(e, "タイマーを停止しました")
@@ -557,8 +550,8 @@ func (session *TimerSession) end() {
 	session.mu.Unlock()
 
 	slog.Info("timer exiting, closing connection", "channel_id", session.ChannelID)
-	shortCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	shortCtx, shortCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shortCancel()
 	go session.conn.Close(shortCtx)
 
 	embed := discord.NewEmbedBuilder().
