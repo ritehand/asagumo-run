@@ -24,6 +24,7 @@ var (
 // YouTube channel IDs to subscribe
 var channelIDsToSubscribe = []string{
 	"UC7Opkf9V2DMmw9SXsOcSOeA",
+	"UChqUTb7kYRX8-EiaN3XFrSQ",
 }
 
 // YouTube WebSub Atom feed
