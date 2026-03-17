@@ -135,6 +135,10 @@ func main() {
 		fmt.Fprintf(w, "Bot is healthy!")
 	})
 
+	// YouTube WebSub Webhook
+	initWebSub()
+	http.HandleFunc("/webhook", handleWebhook)
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8000"
