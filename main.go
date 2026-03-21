@@ -17,6 +17,7 @@ import (
 	"github.com/disgoorg/disgo/handler"
 	"github.com/disgoorg/disgo/voice"
 	"github.com/disgoorg/godave/golibdave"
+	"github.com/disgoorg/omit"
 	"github.com/disgoorg/snowflake/v2"
 	bot_asagumo "github.com/ritehand/asagumo"
 )
@@ -50,6 +51,15 @@ func main() {
 		commandShowTimer(e.ApplicationCommandInteractionCreate)
 		return nil
 	})
+	h.Command("/gen_otp", func(e *handler.CommandEvent) error {
+		commandGenOTP(e.ApplicationCommandInteractionCreate)
+		return nil
+	})
+	h.Command("/otp", func(e *handler.CommandEvent) error {
+		commandOTP(e.ApplicationCommandInteractionCreate)
+		return nil
+	})
+	h.Component(customIDStopOTP, handleStopOTPButton)
 
 	client, err := disgo.New(bot_asagumo.Token,
 		bot.WithCacheConfigOpts(
@@ -121,6 +131,24 @@ func main() {
 		discord.SlashCommandCreate{
 			Name:        "show_timer",
 			Description: "残りの持ち時間を表示します",
+		},
+		discord.SlashCommandCreate{
+			Name:                     "gen_otp",
+			Description:              "OTPを生成・表示します（モデレーター専用）",
+			DefaultMemberPermissions: omit.NewPtr(discord.PermissionManageRoles),
+		},
+		discord.SlashCommandCreate{
+			Name:        "otp",
+			Description: "OTPを入力してロールを取得します",
+			Options: []discord.ApplicationCommandOption{
+				discord.ApplicationCommandOptionInt{
+					Name:        optionNameOTPCode,
+					Description: "モデレーターに表示されている6桁のコード",
+					Required:    true,
+					MinValue:    intPtr(0),
+					MaxValue:    intPtr(999999),
+				},
+			},
 		},
 	}
 
