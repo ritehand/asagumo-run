@@ -78,14 +78,11 @@ func validateOTP(code string) bool {
 
 // formatOTPDisplay はOTPを大きく見やすく表示する。
 func formatOTPDisplay(code string) string {
-	spaced := ""
-	for i, c := range code {
-		if i > 0 {
-			spaced += "  "
-		}
-		spaced += string(c)
+	wide := ""
+	for _, c := range code {
+		wide += string(rune('０' + (c - '0')))
 	}
-	return fmt.Sprintf("# %s", spaced)
+	return fmt.Sprintf("# %s", wide)
 }
 
 // secondsUntilNextPeriod は次のTOTP更新まで何秒かを返す。
