@@ -17,7 +17,6 @@ import (
 	"github.com/disgoorg/disgo/handler"
 	"github.com/disgoorg/disgo/voice"
 	"github.com/disgoorg/godave/golibdave"
-	"github.com/disgoorg/omit"
 	"github.com/disgoorg/snowflake/v2"
 	bot_asagumo "github.com/ritehand/asagumo"
 )
@@ -133,9 +132,8 @@ func main() {
 			Description: "残りの持ち時間を表示します",
 		},
 		discord.SlashCommandCreate{
-			Name:                     "gen_otp",
-			Description:              "OTPを生成・表示します（モデレーター専用）",
-			DefaultMemberPermissions: omit.NewPtr(discord.PermissionManageRoles),
+			Name:        "gen_otp",
+			Description: "OTPを生成・表示します（モデレーター専用）",
 		},
 		discord.SlashCommandCreate{
 			Name:        "otp",

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/disgoorg/disgo/bot"
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/disgo/handler"
@@ -61,7 +62,30 @@ func (s *otpSessionStore) delete(modID snowflake.ID) {
 	delete(s.sessions, modID)
 }
 
-// currentOTP は現在時刻のTOTPコードを返す。
+// moderatorRoleIDs はgen_otpを実行できるロールID一覧。
+var moderatorRoleIDs = map[snowflake.ID]struct{}{
+	snowflake.ID(1473436141884801155): {}, // モデレーター
+	snowflake.ID(1473438169792778283): {}, // admin
+	snowflake.ID(1473459256392028251): {}, // 管理人
+}
+
+func hasModerationRole(client *bot.Client, guildID snowflake.ID, member discord.ResolvedMember) bool {
+	// Administratorパーミッションを持つロールがあれば許可
+	for _, roleID := range member.RoleIDs {
+		if r, ok := client.Caches.Role(guildID, roleID); ok {
+			if r.Permissions.Has(discord.PermissionAdministrator) {
+				return true
+			}
+		}
+	}
+	// モデレーター系ロールチェック
+	for _, roleID := range member.RoleIDs {
+		if _, ok := moderatorRoleIDs[roleID]; ok {
+			return true
+		}
+	}
+	return false
+}
 func currentOTP() (string, error) {
 	return totp.GenerateCode(otpSecret, time.Now())
 }
@@ -92,6 +116,10 @@ func secondsUntilNextPeriod() time.Duration {
 }
 
 func commandGenOTP(e *events.ApplicationCommandInteractionCreate) {
+	if e.Member() == nil || !hasModerationRole(e.Client(), *e.GuildID(), *e.Member()) {
+		sendEphemeral(e, "このコマンドはモデレーター以上のロールが必要です。")
+		return
+	}
 	if otpSecret == "" {
 		sendEphemeral(e, "OTP_SECRET 環境変数が設定されていません。")
 		return
