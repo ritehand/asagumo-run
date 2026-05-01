@@ -1,4 +1,5 @@
 .DS_Store
+.vscode
 testdata/
 gen/*
 !gen/stub.go
