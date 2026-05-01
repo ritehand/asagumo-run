@@ -1,7 +1,9 @@
-.PHONY: build run dev
+.PHONY: dev env run build
 
-build:
-	docker build -t asagumo-run:latest --platform=linux/amd64 .
+dev: build run
+	DEV=true go run .
+env:
+	@set -a ; source ../asagumo/.env ; set +a
 run:
 	docker run --rm -it --platform=linux/amd64 -p 8000:8000 \
 	-e ASAGUMO_TOKEN=${ASAGUMO_TOKEN} \
@@ -13,4 +15,5 @@ run:
 	-e OTP_SECRET=${OTP_SECRET} \
 	-e OTP_ROLE_ID=${OTP_ROLE_ID} \
 	asagumo-run:latest
-dev: build run
+build:
+	docker build -t asagumo-run:latest --platform=linux/amd64 .

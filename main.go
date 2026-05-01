@@ -16,9 +16,9 @@ import (
 	"github.com/disgoorg/disgo/gateway"
 	"github.com/disgoorg/disgo/handler"
 	"github.com/disgoorg/disgo/voice"
-	"github.com/disgoorg/godave/golibdave"
 	"github.com/disgoorg/snowflake/v2"
 	bot_asagumo "github.com/ritehand/asagumo"
+	"github.com/thomas-vilte/dave-go/session"
 )
 
 const (
@@ -78,8 +78,8 @@ func main() {
 			),
 		),
 		bot.WithVoiceManagerConfigOpts(
-			voice.WithDaveSessionCreateFunc(golibdave.NewSession),
-			voice.WithDaveSessionLogger(slog.Default()),
+			voice.WithDaveSessionCreateFunc(session.New),
+			// voice.WithDaveSessionLogger(slog.Default()),
 			// voice.WithConnConfigOpts(voice.WithConnGatewayConfigOpts(voice.WithGatewayAutoReconnect(true))),
 		),
 		bot.WithEventListeners(h),
