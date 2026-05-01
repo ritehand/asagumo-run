@@ -4,12 +4,6 @@ FROM golang:${GO_VERSION}-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apk add --no-cache \
-    build-essential \
-    ca-certificates \
-    git
-
 COPY go.mod go.sum ./
 RUN go mod download
 
