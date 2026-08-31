@@ -14,6 +14,8 @@ run:
 	-e HUB_SECRET=${HUB_SECRET} \
 	-e OTP_SECRET=${OTP_SECRET} \
 	-e OTP_ROLE_ID=${OTP_ROLE_ID} \
+	-e DISCORD_NEWS_WEBHOOK_URL=${DISCORD_NEWS_WEBHOOK_URL} \
+	-e DISCORD_NEWS_FORUM_CHANNEL_ID=${DISCORD_NEWS_FORUM_CHANNEL_ID} \
 	asagumo-run:latest
 build:
 	docker build -t asagumo-run:latest --platform=linux/amd64 .

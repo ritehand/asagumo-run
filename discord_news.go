@@ -37,23 +37,35 @@ var (
 	forumTagIDs = map[string]string{}
 )
 
+// forumChannelID resolves and validates DISCORD_NEWS_FORUM_CHANNEL_ID.
+func forumChannelID() (snowflake.ID, error) {
+	chID := strings.TrimSpace(os.Getenv(discordNewsForumChEnv))
+	if chID == "" {
+		return 0, fmt.Errorf("%s is not set", discordNewsForumChEnv)
+	}
+	channelID, err := snowflake.Parse(chID)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s %q: %w", discordNewsForumChEnv, chID, err)
+	}
+	return channelID, nil
+}
+
 // loadForumTags fetches the existing tags of the forum channel given by
 // DISCORD_NEWS_FORUM_CHANNEL_ID into the name->ID cache. Missing tags are
 // created on demand by ensureForumTags when items are posted.
 func loadForumTags(ctx context.Context, client bot.Client) error {
-	chID := os.Getenv(discordNewsForumChEnv)
-	if chID == "" {
-		return fmt.Errorf("%s is not set", discordNewsForumChEnv)
-	}
-	channelID, err := snowflake.Parse(chID)
+	channelID, err := forumChannelID()
 	if err != nil {
-		return fmt.Errorf("invalid %s: %w", discordNewsForumChEnv, err)
+		return err
 	}
 
 	forumTagsMu.Lock()
 	defer forumTagsMu.Unlock()
 	forumTagIDs, err = fetchForumTagIDs(ctx, client, channelID)
-	return err
+	if err != nil {
+		return fmt.Errorf("forum channel %s: %w", channelID, err)
+	}
+	return nil
 }
 
 // fetchForumTagIDs returns the current name->ID map of the channel's tags.
@@ -78,13 +90,9 @@ func fetchForumTagIDs(ctx context.Context, client bot.Client, channelID snowflak
 // available_tags is replaced wholesale on update, so the existing tags are
 // always re-sent. Serialized because concurrent item posts may race.
 func ensureForumTags(ctx context.Context, client bot.Client, names []string) {
-	chID := os.Getenv(discordNewsForumChEnv)
-	if chID == "" {
-		return // loadForumTags already reported the misconfiguration
-	}
-	channelID, err := snowflake.Parse(chID)
+	channelID, err := forumChannelID()
 	if err != nil {
-		return
+		return // loadForumTags already reported the misconfiguration
 	}
 
 	forumTagsMu.Lock()
@@ -102,12 +110,12 @@ func ensureForumTags(ctx context.Context, client bot.Client, names []string) {
 
 	ch, err := client.Rest.GetChannel(channelID)
 	if err != nil {
-		log.Printf("[discord-news] get forum channel: %v", err)
+		log.Printf("[discord-news] forum channel %s: get forum channel: %v (is the bot a member of that guild? does it have access to the channel?)", channelID, err)
 		return
 	}
 	forum, ok := ch.(discord.GuildForumChannel)
 	if !ok {
-		log.Printf("[discord-news] channel %s is not a forum channel", chID)
+		log.Printf("[discord-news] channel %s is not a forum channel", channelID)
 		return
 	}
 

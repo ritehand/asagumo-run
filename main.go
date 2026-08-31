@@ -3,13 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
-	"os/signal"
 	"runtime/debug"
-	"syscall"
 	"time"
 
 	"github.com/disgoorg/disgo"
@@ -203,13 +200,7 @@ func main() {
 	watcher := rss.NewWatcher(20, onUpdate) // 同時に叩きに行くのは最大20フィードまで
 
 	ctx, cancel := context.WithCancel(context.Background())
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigCh
-		log.Println("shutting down...")
-		cancel()
-	}()
+	defer cancel()
 
 	go watcher.Run(ctx, feeds)
 
