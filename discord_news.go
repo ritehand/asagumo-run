@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,7 +26,35 @@ import (
 const (
 	discordNewsWebhookEnv = "DISCORD_NEWS_WEBHOOK_URL"
 	discordNewsForumChEnv = "DISCORD_NEWS_FORUM_CHANNEL_ID"
+
+	maxWebhookAttempts = 3           // retries on 429
+	maxWebhookWait     = time.Minute // give up beyond this; the feed watcher must not stall
 )
+
+// rateLimitWaitFromResponse returns how long Discord asks us to wait on a
+// 429, honoring X-RateLimit-Reset-After, the Retry-After header and the
+// retry_after body field (per https://docs.discord.com/developers/topics/rate-limits).
+// Returns 0 if no wait information is present.
+func rateLimitWaitFromResponse(resp *http.Response) time.Duration {
+	if h := resp.Header.Get("X-RateLimit-Reset-After"); h != "" {
+		if f, err := strconv.ParseFloat(h, 64); err == nil && f > 0 {
+			return time.Duration(f*float64(time.Second)) + 100*time.Millisecond
+		}
+	}
+	if h := resp.Header.Get("Retry-After"); h != "" {
+		if i, err := strconv.Atoi(h); err == nil && i > 0 {
+			return time.Duration(i)*time.Second + 100*time.Millisecond
+		}
+	}
+	var payload struct {
+		RetryAfter float64 `json:"retry_after"`
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if err == nil && json.Unmarshal(body, &payload) == nil && payload.RetryAfter > 0 {
+		return time.Duration(payload.RetryAfter*float64(time.Second)) + 100*time.Millisecond
+	}
+	return 0
+}
 
 var discordNewsClient = &http.Client{Timeout: 10 * time.Second}
 
@@ -185,10 +215,27 @@ func postNewsToForum(ctx context.Context, client bot.Client, feed rss.FeedConfig
 		return
 	}
 
-	resp, err := discordNewsClient.Post(webhookURL, "application/json", bytes.NewReader(body))
-	if err != nil {
-		log.Printf("[discord-news] post error: %v", err)
-		return
+	// Send the payload, retrying on 429 for as long as Discord's
+	// rate limit headers tell us to (up to maxWebhookAttempts).
+	var resp *http.Response
+	for attempt := 1; ; attempt++ {
+		r, err := discordNewsClient.Post(webhookURL, "application/json", bytes.NewReader(body))
+		if err != nil {
+			log.Printf("[discord-news] post error: %v", err)
+			return
+		}
+		if r.StatusCode != http.StatusTooManyRequests || attempt >= maxWebhookAttempts {
+			resp = r
+			break
+		}
+		wait := rateLimitWaitFromResponse(r)
+		r.Body.Close()
+		if wait == 0 || wait > maxWebhookWait {
+			log.Printf("[discord-news] rate limited (wait %v), dropping %q", wait, item.Title)
+			return
+		}
+		log.Printf("[discord-news] rate limited, retrying in %v: %q", wait, item.Title)
+		time.Sleep(wait)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

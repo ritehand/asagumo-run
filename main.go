@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"runtime/debug"
+	"strconv"
 	"time"
 
 	"github.com/disgoorg/disgo"
@@ -16,6 +19,7 @@ import (
 	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/disgo/gateway"
 	"github.com/disgoorg/disgo/handler"
+	"github.com/disgoorg/disgo/rest"
 	"github.com/disgoorg/disgo/voice"
 	"github.com/disgoorg/snowflake/v2"
 	"github.com/mmcdole/gofeed"
@@ -29,10 +33,39 @@ const (
 	optionNameDuration = `全体時間`
 )
 
+// rateLimitWait extracts the wait time Discord requests on 429 from a
+// *rest.Error, honoring X-RateLimit-Reset-After, the Retry-After header and
+// the retry_after body field (in that order of accuracy, per the docs).
+// Returns false if err is not a 429 with wait information.
+func rateLimitWait(err error) (time.Duration, bool) {
+	var restErr *rest.Error
+	if !errors.As(err, &restErr) || restErr.Response == nil {
+		return 0, false
+	}
+	if h := restErr.Response.Header.Get("X-RateLimit-Reset-After"); h != "" {
+		if f, perr := strconv.ParseFloat(h, 64); perr == nil && f > 0 {
+			return time.Duration(f*float64(time.Second)) + time.Second, true
+		}
+	}
+	if h := restErr.Response.Header.Get("Retry-After"); h != "" {
+		if i, perr := strconv.Atoi(h); perr == nil && i > 0 {
+			return time.Duration(i)*time.Second + time.Second, true
+		}
+	}
+	var payload struct {
+		RetryAfter float64 `json:"retry_after"`
+	}
+	if json.Unmarshal(restErr.RsBody, &payload) == nil && payload.RetryAfter > 0 {
+		return time.Duration(payload.RetryAfter*float64(time.Second)) + time.Second, true
+	}
+	return 0, false
+}
+
 // createDisgoClient retries disgo.New with exponential backoff.
 // Discord answers 429 when the global rate limit is hit (e.g. by frequent
 // deploys); exiting immediately makes the deploy platform crash-loop and
-// keep hammering the API, extending the ban.
+// keep hammering the API, extending the ban. When the 429 carries
+// X-RateLimit-Reset-After / Retry-After, that duration takes precedence.
 func createDisgoClient(opts ...bot.ConfigOpt) (*bot.Client, error) {
 	delay := 5 * time.Second
 	const maxDelay = 2 * time.Minute
@@ -45,8 +78,12 @@ func createDisgoClient(opts ...bot.ConfigOpt) (*bot.Client, error) {
 		if attempt >= maxAttempts {
 			return nil, err
 		}
-		slog.Error("Failed to create disgo client", "error", err, "attempt", attempt, "retry_in", delay)
-		time.Sleep(delay)
+		wait := delay
+		if d, ok := rateLimitWait(err); ok {
+			wait = d
+		}
+		slog.Error("Failed to create disgo client", "error", err, "attempt", attempt, "retry_in", wait)
+		time.Sleep(wait)
 		delay *= 2
 		if delay > maxDelay {
 			delay = maxDelay
