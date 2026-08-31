@@ -22,11 +22,8 @@ import (
 )
 
 const (
-	discordNewsWebhookEnv  = "DISCORD_NEWS_WEBHOOK_URL"
-	discordNewsForumChEnv  = "DISCORD_NEWS_FORUM_CHANNEL_ID"
-	maxForumTagsPerChannel = 20 // Discord's hard limit per forum channel
-	maxAppliedTagsPerPost  = 5  // Discord's hard limit per post
-	maxForumTagNameLen     = 20 // Discord's hard limit per tag name
+	discordNewsWebhookEnv = "DISCORD_NEWS_WEBHOOK_URL"
+	discordNewsForumChEnv = "DISCORD_NEWS_FORUM_CHANNEL_ID"
 )
 
 var discordNewsClient = &http.Client{Timeout: 10 * time.Second}
@@ -51,8 +48,8 @@ func forumChannelID() (snowflake.ID, error) {
 }
 
 // loadForumTags fetches the existing tags of the forum channel given by
-// DISCORD_NEWS_FORUM_CHANNEL_ID into the name->ID cache. Missing tags are
-// created on demand by ensureForumTags when items are posted.
+// DISCORD_NEWS_FORUM_CHANNEL_ID into the name->ID cache. Called once at
+// startup; tags are never fetched or created dynamically afterwards.
 func loadForumTags(ctx context.Context, client bot.Client) error {
 	channelID, err := forumChannelID()
 	if err != nil {
@@ -83,89 +80,6 @@ func fetchForumTagIDs(ctx context.Context, client bot.Client, channelID snowflak
 		ids[t.Name] = t.ID.String()
 	}
 	return ids, nil
-}
-
-// ensureForumTags makes sure every given name exists as a forum tag,
-// creating missing ones via the REST API (requires Manage Channels).
-// available_tags is replaced wholesale on update, so the existing tags are
-// always re-sent. Serialized because concurrent item posts may race.
-func ensureForumTags(ctx context.Context, client bot.Client, names []string) {
-	channelID, err := forumChannelID()
-	if err != nil {
-		return // loadForumTags already reported the misconfiguration
-	}
-
-	forumTagsMu.Lock()
-	defer forumTagsMu.Unlock()
-
-	var missing []string
-	for _, n := range names {
-		if _, ok := forumTagIDs[n]; !ok {
-			missing = append(missing, n)
-		}
-	}
-	if len(missing) == 0 {
-		return
-	}
-
-	ch, err := client.Rest.GetChannel(channelID)
-	if err != nil {
-		log.Printf("[discord-news] forum channel %s: get forum channel: %v (is the bot a member of that guild? does it have access to the channel?)", channelID, err)
-		return
-	}
-	forum, ok := ch.(discord.GuildForumChannel)
-	if !ok {
-		log.Printf("[discord-news] channel %s is not a forum channel", channelID)
-		return
-	}
-
-	tags := forum.AvailableTags
-	added := false
-	for _, n := range missing {
-		if _, ok := forumTagIDs[n]; ok {
-			continue // created while waiting for the lock
-		}
-		if len(tags) >= maxForumTagsPerChannel {
-			log.Printf("[discord-news] forum channel already has %d tags, cannot add %q", maxForumTagsPerChannel, n)
-			continue
-		}
-		tags = append(tags, discord.ChannelTag{Name: n})
-		added = true
-	}
-	if !added {
-		return
-	}
-
-	if _, err := client.Rest.UpdateChannel(channelID, discord.GuildForumChannelUpdate{
-		AvailableTags: &tags,
-	}); err != nil {
-		log.Printf("[discord-news] update forum tags: %v", err)
-		return
-	}
-
-	ids, err := fetchForumTagIDs(ctx, client, channelID)
-	if err != nil {
-		log.Printf("[discord-news] re-fetch forum tags: %v", err)
-		return
-	}
-	forumTagIDs = ids
-}
-
-// forumTagNamesFor returns the item's categories as forum tag names.
-// Names are truncated to Discord's tag name limit.
-func forumTagNamesFor(item *gofeed.Item) []string {
-	var names []string
-	for _, c := range item.Categories {
-		c = strings.TrimSpace(c)
-		if c == "" {
-			continue
-		}
-		if r := []rune(c); len(r) > maxForumTagNameLen {
-			c = string(r[:maxForumTagNameLen])
-		}
-		names = append(names, c)
-	}
-	return names
 }
 
 type webhookExecutePayload struct {
@@ -252,18 +166,16 @@ func postNewsToForum(ctx context.Context, client bot.Client, feed rss.FeedConfig
 	if item.PublishedParsed != nil {
 		payload.Embeds[0].Timestamp = item.PublishedParsed.Format(time.RFC3339)
 	}
-	// Tags come from the item's categories; missing ones are created on demand.
-	if names := forumTagNamesFor(item); len(names) > 0 {
-		ensureForumTags(ctx, client, names)
-		for _, n := range names {
-			id, ok := forumTagIDs[n]
-			if !ok {
-				continue
-			}
+	// Tag comes from the feed config; the tag must already exist in the
+	// forum channel. No tags are fetched or created dynamically.
+	if name := strings.TrimSpace(feed.Tag); name != "" {
+		forumTagsMu.Lock()
+		id, ok := forumTagIDs[name]
+		forumTagsMu.Unlock()
+		if !ok {
+			log.Printf("[discord-news] forum tag %q not found in channel, posting without tag", name)
+		} else {
 			payload.AppliedTags = append(payload.AppliedTags, id)
-			if len(payload.AppliedTags) >= maxAppliedTagsPerPost {
-				break
-			}
 		}
 	}
 

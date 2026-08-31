@@ -32,22 +32,22 @@ const (
 var version string
 
 var feeds = []rss.FeedConfig{
-	{Tag: "seifu", URL: "https://www.gov-online.go.jp/rss/index.rdf", Interval: 10 * time.Minute},
-	{Tag: "kourou", URL: "https://www.mhlw.go.jp/stf/news.rdf", Interval: 10 * time.Minute},
-	{Tag: "nhk", URL: "https://news.web.nhk/n-data/conf/na/rss/cat4.xml", Interval: 10 * time.Minute},
-	{Tag: "soumu", URL: "https://www.soumu.go.jp/news.rdf", Interval: 10 * time.Minute},
-	{Tag: "monka", URL: "https://www.mext.go.jp/b_menu/news/index.rdf", Interval: 10 * time.Minute},
-	{Tag: "tosho", URL: "https://www.ndl.go.jp/rss/ndls/bureau-rss-all.xml", Interval: 10 * time.Minute},
-	{Tag: "kantei", URL: "https://www.kantei.go.jp/index-jnews.rdf", Interval: 10 * time.Minute},
-	{Tag: "houmu", URL: "https://www.moj.go.jp/info.xml", Interval: 10 * time.Minute},
-	{Tag: "gaimu", URL: "https://www.anzen.mofa.go.jp/rss/news.xml", Interval: 10 * time.Minute},
-	{Tag: "nousui", URL: "https://www.maff.go.jp/rss.xml", Interval: 10 * time.Minute},
-	{Tag: "keisan", URL: "https://www.meti.go.jp/ml_index_release_atom.xml", Interval: 10 * time.Minute},
-	{Tag: "egov", URL: "https://www.meti.go.jp/ml_index_release_atom.xml", Interval: 10 * time.Minute},
-	{Tag: "kokkou", URL: "https://www.mlit.go.jp/pressrelease.rdf", Interval: 10 * time.Minute},
-	{Tag: "kankyou", URL: "https://greenfinanceportal.env.go.jp/news.xml", Interval: 10 * time.Minute},
-	{Tag: "bouei", URL: "https://www.mod.go.jp/j/rss/news.xml", Interval: 10 * time.Minute},
-	{Tag: "digital", URL: "https://www.digital.go.jp/rss/news.xml", Interval: 10 * time.Minute},
+	{Tag: "政府広報", URL: "https://www.gov-online.go.jp/rss/index.rdf", Interval: 10 * time.Minute},
+	{Tag: "厚労省", URL: "https://www.mhlw.go.jp/stf/news.rdf", Interval: 10 * time.Minute},
+	{Tag: "NHK", URL: "https://news.web.nhk/n-data/conf/na/rss/cat4.xml", Interval: 10 * time.Minute},
+	{Tag: "総務省", URL: "https://www.soumu.go.jp/news.rdf", Interval: 10 * time.Minute},
+	{Tag: "文科省", URL: "https://www.mext.go.jp/b_menu/news/index.rdf", Interval: 10 * time.Minute},
+	{Tag: "国立国会図書館", URL: "https://www.ndl.go.jp/rss/ndls/bureau-rss-all.xml", Interval: 10 * time.Minute},
+	{Tag: "首相官邸", URL: "https://www.kantei.go.jp/index-jnews.rdf", Interval: 10 * time.Minute},
+	{Tag: "法務省", URL: "https://www.moj.go.jp/info.xml", Interval: 10 * time.Minute},
+	{Tag: "外務省", URL: "https://www.anzen.mofa.go.jp/rss/news.xml", Interval: 10 * time.Minute},
+	{Tag: "農水省", URL: "https://www.maff.go.jp/rss.xml", Interval: 10 * time.Minute},
+	{Tag: "経産省", URL: "https://www.meti.go.jp/ml_index_release_atom.xml", Interval: 10 * time.Minute},
+	{Tag: "e-Gov", URL: "https://www.meti.go.jp/ml_index_release_atom.xml", Interval: 10 * time.Minute},
+	{Tag: "国交省", URL: "https://www.mlit.go.jp/pressrelease.rdf", Interval: 10 * time.Minute},
+	{Tag: "環境省", URL: "https://greenfinanceportal.env.go.jp/news.xml", Interval: 10 * time.Minute},
+	{Tag: "防衛省", URL: "https://www.mod.go.jp/j/rss/news.xml", Interval: 10 * time.Minute},
+	{Tag: "デジタル庁", URL: "https://www.digital.go.jp/rss/news.xml", Interval: 10 * time.Minute},
 }
 
 func main() {
@@ -121,8 +121,8 @@ func main() {
 	}
 	defer client.Close(context.Background())
 
-	// Load existing forum tags into the cache; missing ones are created
-	// on demand when items are posted
+	// Load existing forum tags into the cache; posts apply the feed's
+	// configured tag, so tags must be pre-created in the forum channel
 	if err := loadForumTags(context.Background(), *client); err != nil {
 		slog.Error("Failed to load forum tags", "error", err)
 	}
