@@ -3,10 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"runtime/debug"
+	"syscall"
+	"time"
 
 	"github.com/disgoorg/disgo"
 	"github.com/disgoorg/disgo/bot"
@@ -17,7 +21,9 @@ import (
 	"github.com/disgoorg/disgo/handler"
 	"github.com/disgoorg/disgo/voice"
 	"github.com/disgoorg/snowflake/v2"
+	"github.com/mmcdole/gofeed"
 	bot_asagumo "github.com/ritehand/asagumo"
+	"github.com/ritehand/asagumo-run/rss"
 	"github.com/thomas-vilte/dave-go/session"
 )
 
@@ -27,6 +33,12 @@ const (
 )
 
 var version string
+
+var feeds = []rss.FeedConfig{
+	{Tag: "bla", URL: "https://example.com/feed1.xml", Interval: 5 * time.Minute},
+	{Tag: "foo", URL: "https://example.com/feed2.xml", Interval: 10 * time.Minute},
+	// ... 数百〜数千件追加してもgoroutineは軽量なので問題ない
+}
 
 func main() {
 	if buildInfo, ok := debug.ReadBuildInfo(); ok {
@@ -164,6 +176,24 @@ func main() {
 	// YouTube WebSub Webhook
 	initWebSub()
 	http.HandleFunc("/webhook", handleWebhook)
+
+	onUpdate := func(feedConfig rss.FeedConfig, item *gofeed.Item) {
+		// TODO: send webhook
+		// $DISCORD_NEWS_WEBHOOK_URL
+	}
+
+	watcher := rss.NewWatcher(20, onUpdate) // 同時に叩きに行くのは最大20フィードまで
+
+	ctx, cancel := context.WithCancel(context.Background())
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		log.Println("shutting down...")
+		cancel()
+	}()
+
+	go watcher.Run(ctx, feeds)
 
 	port := os.Getenv("PORT")
 	if port == "" {
