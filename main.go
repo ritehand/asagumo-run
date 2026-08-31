@@ -29,6 +29,31 @@ const (
 	optionNameDuration = `全体時間`
 )
 
+// createDisgoClient retries disgo.New with exponential backoff.
+// Discord answers 429 when the global rate limit is hit (e.g. by frequent
+// deploys); exiting immediately makes the deploy platform crash-loop and
+// keep hammering the API, extending the ban.
+func createDisgoClient(opts ...bot.ConfigOpt) (*bot.Client, error) {
+	delay := 5 * time.Second
+	const maxDelay = 2 * time.Minute
+	const maxAttempts = 10
+	for attempt := 1; ; attempt++ {
+		client, err := disgo.New(bot_asagumo.Token, opts...)
+		if err == nil {
+			return client, nil
+		}
+		if attempt >= maxAttempts {
+			return nil, err
+		}
+		slog.Error("Failed to create disgo client", "error", err, "attempt", attempt, "retry_in", delay)
+		time.Sleep(delay)
+		delay *= 2
+		if delay > maxDelay {
+			delay = maxDelay
+		}
+	}
+}
+
 var version string
 
 var feeds = []rss.FeedConfig{
@@ -82,7 +107,7 @@ func main() {
 	})
 	h.Component(customIDStopOTP, handleStopOTPButton)
 
-	client, err := disgo.New(bot_asagumo.Token,
+	client, err := createDisgoClient(
 		bot.WithCacheConfigOpts(
 			cache.WithCaches(
 				cache.FlagVoiceStates,
