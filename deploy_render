@@ -1,0 +1,3 @@
+#!/bin/zsh
+
+curl -L https://api.render.com/deploy/srv-da9ar8e7bikc738q56n0?key=a5XC4Iksy9s
