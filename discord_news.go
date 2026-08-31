@@ -176,22 +176,27 @@ func postNewsToForum(ctx context.Context, client bot.Client, feed rss.FeedConfig
 		}
 	}
 
+	// Post content: item content (if any) followed by the link.
+	content := item.Link
+	if item.Content != "" {
+		text := stripHTML(item.Content)
+		if text != "" {
+			if len(text) > 300 {
+				text = text[:300] + "…"
+			}
+			content = text + "\n" + item.Link
+		}
+	}
+
 	payload := webhookExecutePayload{
 		Username:   name,
 		AvatarURL:  faviconURL(feed.URL),
 		ThreadName: item.Title,
-		Content:    item.Link,
+		Content:    content,
 		Embeds: []webhookEmbed{{
 			Title: item.Title,
 			URL:   item.Link,
 		}},
-	}
-	if item.Description != "" {
-		desc := stripHTML(item.Description)
-		if len(desc) > 300 {
-			desc = desc[:300] + "…"
-		}
-		payload.Embeds[0].Description = desc
 	}
 	if item.PublishedParsed != nil {
 		payload.Embeds[0].Timestamp = item.PublishedParsed.Format(time.RFC3339)
