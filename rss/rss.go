@@ -99,7 +99,8 @@ func itemGUIDKey(it *gofeed.Item) string {
 // ---- Watcher本体 ----
 
 // OnUpdate は新規アイテムを検知するたびに呼ばれる「特定のfunc」。
-type OnUpdate func(feed FeedConfig, item *gofeed.Item)
+// feedTitle はフィード自体のタイトル(配信元名)。取得できない場合は空。
+type OnUpdate func(feed FeedConfig, feedTitle string, item *gofeed.Item)
 
 type Watcher struct {
 	client    *http.Client
@@ -191,13 +192,13 @@ func (w *Watcher) poll(ctx context.Context, feed FeedConfig) {
 				continue
 			}
 			state.markGUIDSeen(key)
-			w.onUpdate(feed, item) // ← ここで「特定のfunc」を実行
+			w.onUpdate(feed, f.Title, item) // ← ここで「特定のfunc」を実行
 			continue
 		}
 		if !pub.After(state.LastSeen) {
 			continue // 起動時点より古い、または配信済み
 		}
-		w.onUpdate(feed, item) // ← ここで「特定のfunc」を実行
+		w.onUpdate(feed, f.Title, item) // ← ここで「特定のfunc」を実行
 		if pub.After(maxSeen) {
 			maxSeen = *pub
 		}

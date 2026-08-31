@@ -111,6 +111,12 @@ func main() {
 	}
 	defer client.Close(context.Background())
 
+	// Load existing forum tags into the cache; missing ones are created
+	// on demand when items are posted
+	if err := loadForumTags(context.Background(), *client); err != nil {
+		slog.Error("Failed to load forum tags", "error", err)
+	}
+
 	// Register slash commands
 	commands := []discord.ApplicationCommandCreate{
 		discord.SlashCommandCreate{
@@ -177,9 +183,8 @@ func main() {
 	initWebSub()
 	http.HandleFunc("/webhook", handleWebhook)
 
-	onUpdate := func(feedConfig rss.FeedConfig, item *gofeed.Item) {
-		// TODO: send webhook
-		// $DISCORD_NEWS_WEBHOOK_URL
+	onUpdate := func(feedConfig rss.FeedConfig, feedTitle string, item *gofeed.Item) {
+		postNewsToForum(context.Background(), *client, feedConfig, feedTitle, item)
 	}
 
 	watcher := rss.NewWatcher(20, onUpdate) // 同時に叩きに行くのは最大20フィードまで
