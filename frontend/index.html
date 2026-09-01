@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="ja" class="scroll-smooth">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="ゆうこくサーバー — 毎朝、ニュースは雲のように届く。最新ニュースを自動配信するDiscordサーバーへ参加しよう。" />
+  <title>ゆうこくサーバー — 毎朝、ニュースは雲のように届く</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;500;600&family=Raleway:wght@300;400;500;600&family=Noto+Sans+JP:wght@300;400;500;700&display=swap"
+    rel="stylesheet" />
+</head>
+
+<body class="bg-bg font-sans font-light text-slate-200 antialiased">
+  <div id="app" class="overflow-x-clip">
+    <!-- Navigation -->
+    <nav id="navbar" class="fixed inset-x-0 top-0 z-50 border-b border-transparent">
+      <div class="mx-auto flex h-20 w-[min(1200px,90%)] items-center justify-between">
+        <a href="#home" class="block">
+          <img src="/home-icon.png" alt="ゆうこくサーバー ホーム" class="h-10 w-auto" />
+        </a>
+        <div
+          class="hidden items-center gap-9 text-sm font-medium text-dim md:flex [&>a]:transition-colors [&>a]:hover:text-white">
+          <a class="link-underline" href="#home">ホーム</a>
+          <a class="link-underline" href="#receive">受け取れるもの</a>
+          <a class="link-underline" href="#join">参加の流れ</a>
+          <a class="link-underline" href="#preview">プレビュー</a>
+        </div>
+        <a data-discord-invite
+          class="hidden items-center gap-2 border border-white/40 px-5 py-2 text-sm tracking-[0.1em] text-white transition duration-300 hover:border-[#5865F2] hover:bg-[#5865F2]/10 md:flex">
+          <svg class="size-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path
+              d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.058a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+          </svg>
+          参加する
+        </a>
+      </div>
+    </nav>
+
+    <main>
+      <!-- Hero -->
+      <section id="home" class="relative flex min-h-svh items-center justify-center">
+        <div class="bg-hero absolute inset-0" aria-hidden="true"></div>
+        <div class="relative z-10 w-[min(900px,92%)] text-center">
+          <p class="fade-in mb-8 text-sm tracking-[0.4em] text-dim">
+            選挙で戦える場を備える
+          </p>
+          <h1
+            class="fade-in font-display text-[clamp(4rem,10vw,6rem)] font-medium leading-none tracking-[0.12em] text-white">
+            ゆうこくサーバー
+          </h1>
+          <div class="fade-in mx-auto mt-10 h-px w-24 bg-white/25"></div>
+          <p class="fade-in mx-auto mt-10 max-w-[560px] text-base leading-loose text-dim md:text-lg">
+            RSS で収集した最新ニュースを、Discord フォーラムに自動配信。
+            参加するだけで、毎朝ニュースが雲のように届きます。
+          </p>
+          <div class="fade-in mt-12 flex flex-wrap justify-center gap-4">
+            <a data-discord-invite
+              class="inline-flex items-center gap-3 bg-[#5865F2] px-10 py-4 text-sm font-medium tracking-[0.15em] text-white shadow-[0_8px_30px_rgba(88,101,242,0.35)] transition duration-300 hover:-translate-y-0.5 hover:bg-[#4752c4]"
+              href="#">
+              <svg class="size-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path
+                  d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.058a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+              </svg>
+              Discord に参加する
+            </a>
+            <a class="px-10 py-4 text-sm tracking-[0.2em] text-dim transition duration-300 hover:text-white"
+              href="#receive">
+              届くものを見る
+            </a>
+          </div>
+        </div>
+        <!-- Scroll indicator -->
+        <div class="fade-in absolute bottom-0 left-1/2 -translate-x-1/2">
+          <div class="scroll-indicator">
+            <div class="scroll-line"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Facts -->
+      <section class="border-y border-white/[0.06] bg-bgsoft">
+        <div class="mx-auto grid w-[min(1200px,90%)] gap-16 py-24 text-center md:grid-cols-3 md:py-28">
+          <div data-reveal>
+            <div class="the-line mx-auto mb-10 h-px w-16 bg-white/15"></div>
+            <div class="font-display text-5xl font-normal text-white md:text-6xl">24<span class="text-accent">/</span>7
+            </div>
+            <p class="mt-4 text-sm tracking-[0.2em] text-dim">自動配信</p>
+          </div>
+          <div data-reveal>
+            <div class="the-line mx-auto mb-10 h-px w-16 bg-white/15"></div>
+            <div class="font-display text-5xl font-normal text-white md:text-6xl">0<span class="text-accent">円</span>
+            </div>
+            <p class="mt-4 text-sm tracking-[0.2em] text-dim">参加は無料</p>
+          </div>
+          <div data-reveal>
+            <div class="the-line mx-auto mb-10 h-px w-16 bg-white/15"></div>
+            <div class="font-display text-5xl font-normal text-white md:text-6xl">1<span class="text-accent">分</span>
+            </div>
+            <p class="mt-4 text-sm tracking-[0.2em] text-dim">で参加完了</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Receive -->
+      <section id="receive" class="py-28 md:py-36">
+        <div class="mx-auto w-[min(1200px,90%)]">
+          <div class="mb-20 text-center" data-reveal>
+            <h2 class="font-display text-4xl font-medium tracking-[0.15em] text-white md:text-5xl">受け取れるもの</h2>
+            <p class="mt-5 text-sm tracking-[0.25em] text-dim">
+              サーバーに<span class="text-accent">参加するだけ</span>で、すべて届きます
+            </p>
+          </div>
+          <div class="grid gap-x-12 gap-y-16 md:grid-cols-3">
+            <article class="group border-t border-white/10 pt-8 transition-colors duration-300 hover:border-accent/60"
+              data-reveal>
+              <span
+                class="font-display text-sm tracking-[0.2em] text-dim transition-colors group-hover:text-accent">壱</span>
+              <h3 class="mt-4 font-display text-xl font-medium text-white">毎朝の Tech ニュース</h3>
+              <p class="mt-3 text-sm leading-loose text-dim">厳選した RSS フィードから、新しい記事だけを毎日お届けします。</p>
+            </article>
+            <article class="group border-t border-white/10 pt-8 transition-colors duration-300 hover:border-accent/60"
+              data-reveal>
+              <span
+                class="font-display text-sm tracking-[0.2em] text-dim transition-colors group-hover:text-accent">弐</span>
+              <h3 class="mt-4 font-display text-xl font-medium text-white">リリース情報</h3>
+              <p class="mt-3 text-sm leading-loose text-dim">使っているツールのアップデートを見逃しません。</p>
+            </article>
+            <article class="group border-t border-white/10 pt-8 transition-colors duration-300 hover:border-accent/60"
+              data-reveal>
+              <span
+                class="font-display text-sm tracking-[0.2em] text-dim transition-colors group-hover:text-accent">参</span>
+              <h3 class="mt-4 font-display text-xl font-medium text-white">整頓されたフォーラム</h3>
+              <p class="mt-3 text-sm leading-loose text-dim">記事ごとにスレッドが立ち、タグで分類。チャンネルは静かなままです。</p>
+            </article>
+            <article class="group border-t border-white/10 pt-8 transition-colors duration-300 hover:border-accent/60"
+              data-reveal>
+              <span
+                class="font-display text-sm tracking-[0.2em] text-dim transition-colors group-hover:text-accent">肆</span>
+              <h3 class="mt-4 font-display text-xl font-medium text-white">概要つきで読める</h3>
+              <p class="mt-3 text-sm leading-loose text-dim">リンクだけではなく概要も添付。開く前に読むかどうか判断できます。</p>
+            </article>
+            <article class="group border-t border-white/10 pt-8 transition-colors duration-300 hover:border-accent/60"
+              data-reveal>
+              <span
+                class="font-display text-sm tracking-[0.2em] text-dim transition-colors group-hover:text-accent">伍</span>
+              <h3 class="mt-4 font-display text-xl font-medium text-white">通知は自由に調整</h3>
+              <p class="mt-3 text-sm leading-loose text-dim">Discord 側でミュートや通知設定を自由に変更できます。</p>
+            </article>
+            <article class="group border-t border-white/10 pt-8 transition-colors duration-300 hover:border-accent/60"
+              data-reveal>
+              <span
+                class="font-display text-sm tracking-[0.2em] text-dim transition-colors group-hover:text-accent">陸</span>
+              <h3 class="mt-4 font-display text-xl font-medium text-white">完全無料</h3>
+              <p class="mt-3 text-sm leading-loose text-dim">登録も課金も不要。Discord アカウントがあればすぐ参加できます。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- How to join -->
+      <section id="join" class="border-y border-white/[0.06] bg-bgsoft py-28 md:py-36">
+        <div class="mx-auto w-[min(1200px,90%)]">
+          <div class="mb-20 text-center" data-reveal>
+            <h2 class="font-display text-4xl font-medium tracking-[0.15em] text-white md:text-5xl">参加の流れ</h2>
+            <p class="mt-5 text-sm tracking-[0.25em] text-dim">
+              1分で<span class="text-accent">完了</span>します
+            </p>
+          </div>
+          <div class="grid gap-x-12 gap-y-16 md:grid-cols-3">
+            <div data-reveal>
+              <div class="font-display text-7xl font-light text-white/15">壱</div>
+              <h3 class="mt-6 font-display text-xl font-medium text-white">Discord に参加</h3>
+              <p class="mt-3 text-sm leading-loose text-dim">下の招待リンクからサーバーに参加します。アカウントがなければ無料で作成できます。</p>
+              <div class="the-line mt-8 h-px w-full bg-white/10"></div>
+            </div>
+            <div data-reveal>
+              <div class="font-display text-7xl font-light text-white/15">弐</div>
+              <h3 class="mt-6 font-display text-xl font-medium text-white">フォーラムを眺める</h3>
+              <p class="mt-3 text-sm leading-loose text-dim">興味のあるカテゴリだけフォローしたり、通知を調整したり自由に設定できます。</p>
+              <div class="the-line mt-8 h-px w-full bg-white/10"></div>
+            </div>
+            <div data-reveal>
+              <div class="font-display text-7xl font-light text-white/15">参</div>
+              <h3 class="mt-6 font-display text-xl font-medium text-white">毎朝届くのを待つ</h3>
+              <p class="mt-3 text-sm leading-loose text-dim">あとは放置。新しい記事は Discord フォーラムにスレッドとして毎日届きます。</p>
+              <div class="the-line mt-8 h-px w-full bg-white/10"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Discord preview -->
+      <section id="preview" class="py-28 md:py-36">
+        <div class="mx-auto w-[min(1200px,90%)]">
+          <div class="mb-20 text-center" data-reveal>
+            <h2 class="font-display text-4xl font-medium tracking-[0.15em] text-white md:text-5xl">届くもの</h2>
+            <p class="mt-5 text-sm tracking-[0.25em] text-dim">
+              フォーラム<span class="text-accent">スレッド</span>のイメージ
+            </p>
+          </div>
+          <div class="mx-auto w-[min(620px,100%)] text-left" data-reveal>
+            <div class="border border-white/10 bg-white/[0.02] shadow-[0_40px_100px_rgba(0,0,0,0.6)]">
+              <div class="flex items-center gap-3 border-b border-white/10 px-6 py-4 text-sm">
+                <span class="size-2 rounded-full bg-emerald-400/80"></span>
+                <span class="font-normal tracking-wide"># news-forum</span>
+                <span class="ml-auto text-xs tracking-[0.15em] text-dim">ゆうこくBOT</span>
+              </div>
+              <div class="grid gap-4 p-6">
+                <div class="border-l-2 border-accent/60 pl-5">
+                  <span class="text-xs tracking-[0.15em] text-accent-3">技術</span>
+                  <div class="mt-2 text-white">新フレームワークが OSS として公開</div>
+                  <p class="mt-1.5 text-sm leading-relaxed text-dim">公式ブログにて詳細が発表されました。パフォーマンスと DX の向上が主な変更点です。</p>
+                  <span class="mt-3 inline-block text-sm tracking-[0.1em] text-accent">続きを読む →</span>
+                </div>
+                <div class="border-l border-white/10 pl-5 opacity-50">
+                  <span class="text-xs tracking-[0.15em] text-accent-2">リリース</span>
+                  <div class="mt-2 text-white">v2.4.0 リリースノート</div>
+                  <span class="mt-3 inline-block text-sm tracking-[0.1em] text-dim">続きを読む →</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CTA -->
+      <section id="contact" class="relative py-32 md:py-44">
+        <div
+          class="absolute inset-0 bg-[radial-gradient(ellipse_60%_80%_at_50%_50%,rgba(109,139,255,0.08),transparent_70%)]"
+          aria-hidden="true"></div>
+        <div class="relative mx-auto w-[min(800px,92%)] text-center" data-reveal>
+          <div class="the-line mx-auto mb-10 h-px w-16 bg-white/15"></div>
+          <h2 class="font-display text-4xl font-medium leading-snug tracking-[0.1em] text-white md:text-5xl">
+            今すぐ、雲の下へ。
+          </h2>
+          <p class="mx-auto mt-8 max-w-[480px] leading-loose text-dim">
+            参加は1分。あとは毎朝、雲のように記事が届きます。
+          </p>
+          <a data-discord-invite
+            class="mt-12 inline-flex items-center gap-3 bg-[#5865F2] px-12 py-4 text-sm font-medium tracking-[0.15em] text-white shadow-[0_8px_30px_rgba(88,101,242,0.35)] transition duration-300 hover:-translate-y-0.5 hover:bg-[#4752c4]"
+            href="#">
+            <svg class="size-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path
+                d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.058a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+            </svg>
+            Discord に参加する
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="border-t border-white/[0.06]">
+      <div
+        class="mx-auto flex w-[min(1200px,90%)] flex-col items-center justify-between gap-4 py-10 text-sm text-dim md:flex-row">
+        <span>© 2026 ゆうこくサーバー</span>
+        <span>Discord ニュースコミュニティ</span>
+        <a class="link-underline transition-colors hover:text-white" href="https://github.com/ritehand/asagumo-run"
+          target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </footer>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
+</html>

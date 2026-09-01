@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -32,6 +34,12 @@ const (
 	optionNameSenkyoku = `選挙区`
 	optionNameDuration = `全体時間`
 )
+
+//go:embed frontend/dist
+var frontendEmbed embed.FS
+
+// frontendFS strips the "frontend/dist" prefix so files are served at "/".
+var frontendFS, _ = fs.Sub(frontendEmbed, "frontend/dist")
 
 // rateLimitWait extracts the wait time Discord requests on 429 from a
 // *rest.Error, honoring X-RateLimit-Reset-After, the Retry-After header and
@@ -247,7 +255,7 @@ func main() {
 	}
 
 	// THE "KEEP-ALIVE" SERVER
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Bot is healthy!")
 	})
 
@@ -265,6 +273,9 @@ func main() {
 	defer cancel()
 
 	go watcher.Run(ctx, feeds)
+
+	// Frontend
+	http.Handle("/", http.FileServer(http.FS(frontendFS)))
 
 	port := os.Getenv("PORT")
 	if port == "" {
