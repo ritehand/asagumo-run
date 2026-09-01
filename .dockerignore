@@ -1,0 +1,11 @@
+.git
+.vscode
+.DS_Store
+testdata/
+run
+build
+TODO.md
+Dockerfile
+.dockerignore
+frontend/node_modules
+frontend/dist

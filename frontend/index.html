@@ -3,10 +3,10 @@
 
 <head>
   <meta charset="UTF-8" />
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="ゆうこくサーバー — 毎朝、ニュースは雲のように届く。最新ニュースを自動配信するDiscordサーバーへ参加しよう。" />
-  <title>ゆうこくサーバー — 毎朝、ニュースは雲のように届く</title>
+  <title>ゆうこくサーバー</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -26,6 +26,7 @@
           class="hidden items-center gap-9 text-sm font-medium text-dim md:flex [&>a]:transition-colors [&>a]:hover:text-white">
           <a class="link-underline" href="#home">ホーム</a>
           <a class="link-underline" href="#receive">受け取れるもの</a>
+          <a class="link-underline" href="#compare">比較</a>
           <a class="link-underline" href="#join">参加の流れ</a>
           <a class="link-underline" href="#preview">プレビュー</a>
         </div>
@@ -54,8 +55,8 @@
           </h1>
           <div class="fade-in mx-auto mt-10 h-px w-24 bg-white/25"></div>
           <p class="fade-in mx-auto mt-10 max-w-[560px] text-base leading-loose text-dim md:text-lg">
-            RSS で収集した最新ニュースを、Discord フォーラムに自動配信。
-            参加するだけで、毎朝ニュースが雲のように届きます。
+            小選挙区すべてのチャンネルを完備。
+            専用BOTを完備。
           </p>
           <div class="fade-in mt-12 flex flex-wrap justify-center gap-4">
             <a data-discord-invite
@@ -69,7 +70,7 @@
             </a>
             <a class="px-10 py-4 text-sm tracking-[0.2em] text-dim transition duration-300 hover:text-white"
               href="#receive">
-              届くものを見る
+              なぜ作ったか
             </a>
           </div>
         </div>
@@ -86,15 +87,15 @@
         <div class="mx-auto grid w-[min(1200px,90%)] gap-16 py-24 text-center md:grid-cols-3 md:py-28">
           <div data-reveal>
             <div class="the-line mx-auto mb-10 h-px w-16 bg-white/15"></div>
-            <div class="font-display text-5xl font-normal text-white md:text-6xl">24<span class="text-accent">/</span>7
+            <div class="font-display text-5xl font-normal text-white md:text-6xl"><span class="text-accent">2</span>89
             </div>
-            <p class="mt-4 text-sm tracking-[0.2em] text-dim">自動配信</p>
+            <p class="mt-4 text-sm tracking-[0.2em] text-dim">選挙区ごとのチャンネル</p>
           </div>
           <div data-reveal>
             <div class="the-line mx-auto mb-10 h-px w-16 bg-white/15"></div>
             <div class="font-display text-5xl font-normal text-white md:text-6xl">0<span class="text-accent">円</span>
             </div>
-            <p class="mt-4 text-sm tracking-[0.2em] text-dim">参加は無料</p>
+            <p class="mt-4 text-sm tracking-[0.2em] text-dim">完全無料</p>
           </div>
           <div data-reveal>
             <div class="the-line mx-auto mb-10 h-px w-16 bg-white/15"></div>
@@ -109,9 +110,9 @@
       <section id="receive" class="py-28 md:py-36">
         <div class="mx-auto w-[min(1200px,90%)]">
           <div class="mb-20 text-center" data-reveal>
-            <h2 class="font-display text-4xl font-medium tracking-[0.15em] text-white md:text-5xl">受け取れるもの</h2>
+            <h2 class="font-display text-4xl font-medium tracking-[0.15em] text-white md:text-5xl">なぜ作ったか</h2>
             <p class="mt-5 text-sm tracking-[0.25em] text-dim">
-              サーバーに<span class="text-accent">参加するだけ</span>で、すべて届きます
+              もう<span class="text-accent">時間がない</span>それが全て
             </p>
           </div>
           <div class="grid gap-x-12 gap-y-16 md:grid-cols-3">
@@ -119,44 +120,131 @@
               data-reveal>
               <span
                 class="font-display text-sm tracking-[0.2em] text-dim transition-colors group-hover:text-accent">壱</span>
-              <h3 class="mt-4 font-display text-xl font-medium text-white">毎朝の Tech ニュース</h3>
-              <p class="mt-3 text-sm leading-loose text-dim">厳選した RSS フィードから、新しい記事だけを毎日お届けします。</p>
+              <h3 class="mt-4 font-display text-xl font-medium text-white">オープンチャットは使えない</h3>
+              <p class="mt-3 text-sm leading-loose text-dim">運動を醸成する場としてオープンチャットは致命的に使えない。</p>
             </article>
             <article class="group border-t border-white/10 pt-8 transition-colors duration-300 hover:border-accent/60"
               data-reveal>
               <span
                 class="font-display text-sm tracking-[0.2em] text-dim transition-colors group-hover:text-accent">弐</span>
-              <h3 class="mt-4 font-display text-xl font-medium text-white">リリース情報</h3>
-              <p class="mt-3 text-sm leading-loose text-dim">使っているツールのアップデートを見逃しません。</p>
+              <h3 class="mt-4 font-display text-xl font-medium text-white">自由かつ統制もとれる</h3>
+              <p class="mt-3 text-sm leading-loose text-dim">ロール、権限設定により、然るべき人に通知が届く。いざとなれば自分のサーバーも立てられる。</p>
             </article>
             <article class="group border-t border-white/10 pt-8 transition-colors duration-300 hover:border-accent/60"
               data-reveal>
               <span
                 class="font-display text-sm tracking-[0.2em] text-dim transition-colors group-hover:text-accent">参</span>
-              <h3 class="mt-4 font-display text-xl font-medium text-white">整頓されたフォーラム</h3>
-              <p class="mt-3 text-sm leading-loose text-dim">記事ごとにスレッドが立ち、タグで分類。チャンネルは静かなままです。</p>
+              <h3 class="mt-4 font-display text-xl font-medium text-white">全ての選挙区を集約</h3>
+              <p class="mt-3 text-sm leading-loose text-dim">バラバラだった自治を本部がまとめる。</p>
             </article>
             <article class="group border-t border-white/10 pt-8 transition-colors duration-300 hover:border-accent/60"
               data-reveal>
               <span
                 class="font-display text-sm tracking-[0.2em] text-dim transition-colors group-hover:text-accent">肆</span>
-              <h3 class="mt-4 font-display text-xl font-medium text-white">概要つきで読める</h3>
-              <p class="mt-3 text-sm leading-loose text-dim">リンクだけではなく概要も添付。開く前に読むかどうか判断できます。</p>
+              <h3 class="mt-4 font-display text-xl font-medium text-white">専用BOT</h3>
+              <p class="mt-3 text-sm leading-loose text-dim">機能の拡張を自分たちで行う。</p>
             </article>
             <article class="group border-t border-white/10 pt-8 transition-colors duration-300 hover:border-accent/60"
               data-reveal>
               <span
                 class="font-display text-sm tracking-[0.2em] text-dim transition-colors group-hover:text-accent">伍</span>
-              <h3 class="mt-4 font-display text-xl font-medium text-white">通知は自由に調整</h3>
-              <p class="mt-3 text-sm leading-loose text-dim">Discord 側でミュートや通知設定を自由に変更できます。</p>
+              <h3 class="mt-4 font-display text-xl font-medium text-white">ワクチン被害者に寄り添う</h3>
+              <p class="mt-3 text-sm leading-loose text-dim">専用カテゴリを用意。プライバシーに配慮した仕様。</p>
             </article>
             <article class="group border-t border-white/10 pt-8 transition-colors duration-300 hover:border-accent/60"
               data-reveal>
               <span
                 class="font-display text-sm tracking-[0.2em] text-dim transition-colors group-hover:text-accent">陸</span>
-              <h3 class="mt-4 font-display text-xl font-medium text-white">完全無料</h3>
-              <p class="mt-3 text-sm leading-loose text-dim">登録も課金も不要。Discord アカウントがあればすぐ参加できます。</p>
+              <h3 class="mt-4 font-display text-xl font-medium text-white">国産プラットフォームが良いが</h3>
+              <p class="mt-3 text-sm leading-loose text-dim">現在の最適解としてDiscordしかない。</p>
             </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- Compare: LINE OpenChat vs Discord -->
+      <section id="compare" class="py-28 md:py-36">
+        <div class="mx-auto w-[min(1200px,90%)]">
+          <div class="mb-20 text-center" data-reveal>
+            <h2 class="font-display text-4xl font-medium tracking-[0.15em] text-white md:text-5xl">なぜ Discord なのか</h2>
+            <p class="mt-5 text-sm tracking-[0.25em] text-dim">
+              LINE オープンチャットと<span class="text-accent">くらべて</span>みました
+            </p>
+          </div>
+          <div class="mx-auto w-[min(720px,100%)]" data-reveal>
+            <table class="w-full text-left text-sm">
+              <thead>
+                <tr class="border-b border-white/15 text-xs tracking-[0.15em] text-dim">
+                  <th scope="col" class="px-3 py-4 font-normal md:px-4">項目</th>
+                  <th scope="col" class="px-3 py-4 text-center font-normal md:px-4">LINE オープンチャット</th>
+                  <th scope="col" class="bg-white/[0.04] px-3 py-4 text-center font-normal text-white md:px-4">ゆうこくサーバー
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="border-b border-white/[0.06]">
+                  <th scope="row" class="px-3 py-4 font-normal text-slate-300 md:px-4">費用</th>
+                  <td class="px-3 py-4 text-center text-dim md:px-4">無料</td>
+                  <td class="bg-white/[0.04] px-3 py-4 text-center text-dim md:px-4">無料</td>
+                </tr>
+                <tr class="border-b border-white/[0.06]">
+                  <th scope="row" class="px-3 py-4 font-normal text-slate-300 md:px-4">BOT</th>
+                  <td class="px-3 py-4 text-center md:px-4">
+                    <span class="text-amber-400/80">△</span>
+                    <span class="mt-1 block text-xs text-dim">付属のBOTのみ</span>
+                  </td>
+                  <td class="bg-white/[0.04] px-3 py-4 text-center md:px-4">
+                    <span class="text-emerald-400">○</span>
+                    <span class="mt-1 block text-xs text-dim">多種多様、自前で開発可能</span>
+                  </td>
+                </tr>
+                <tr class="border-b border-white/[0.06]">
+                  <th scope="row" class="px-3 py-4 font-normal text-slate-300 md:px-4">話題ごとの整理</th>
+                  <td class="px-3 py-4 text-center md:px-4">
+                    <span class="text-amber-400/80">△</span>
+                    <span class="mt-1 block text-xs text-dim">投稿は流れて埋もれがち</span>
+                  </td>
+                  <td class="bg-white/[0.04] px-3 py-4 text-center md:px-4">
+                    <span class="text-emerald-400">○</span>
+                    <span class="mt-1 block text-xs text-dim">フォーラムで記事ごと＋タグ分類</span>
+                  </td>
+                </tr>
+                <tr class="border-b border-white/[0.06]">
+                  <th scope="row" class="px-3 py-4 font-normal text-slate-300 md:px-4">通知の細かい調整</th>
+                  <td class="px-3 py-4 text-center md:px-4">
+                    <span class="text-amber-400/80">△</span>
+                    <span class="mt-1 block text-xs text-dim">全体のオン/オフが中心</span>
+                  </td>
+                  <td class="bg-white/[0.04] px-3 py-4 text-center md:px-4">
+                    <span class="text-emerald-400">○</span>
+                    <span class="mt-1 block text-xs text-dim">カテゴリごとにミュート可能、ロールへのメンション</span>
+                  </td>
+                </tr>
+                <tr class="border-b border-white/[0.06]">
+                  <th scope="row" class="px-3 py-4 font-normal text-slate-300 md:px-4">過去の投稿を探す</th>
+                  <td class="px-3 py-4 text-center md:px-4">
+                    <span class="text-amber-400/80">△</span>
+                    <span class="mt-1 block text-xs text-dim">簡易な検索機能</span>
+                  </td>
+                  <td class="bg-white/[0.04] px-3 py-4 text-center md:px-4">
+                    <span class="text-emerald-400">○</span>
+                    <span class="mt-1 block text-xs text-dim">検索オプションが豊富</span>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row" class="px-3 py-4 font-normal text-slate-300 md:px-4">PC での閲覧</th>
+                  <td class="px-3 py-4 text-center md:px-4">
+                    <span class="text-amber-400/80">△</span>
+                    <span class="mt-1 block text-xs text-dim">スマホ前提の設計</span>
+                  </td>
+                  <td class="bg-white/[0.04] px-3 py-4 text-center md:px-4">
+                    <span class="text-emerald-400">○</span>
+                    <span class="mt-1 block text-xs text-dim">ブラウザ・アプリ両対応</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="mt-6 text-right text-xs text-dim">○ = できる / △ = 一部のみ</p>
           </div>
         </div>
       </section>
@@ -179,49 +267,15 @@
             </div>
             <div data-reveal>
               <div class="font-display text-7xl font-light text-white/15">弐</div>
-              <h3 class="mt-6 font-display text-xl font-medium text-white">フォーラムを眺める</h3>
-              <p class="mt-3 text-sm leading-loose text-dim">興味のあるカテゴリだけフォローしたり、通知を調整したり自由に設定できます。</p>
+              <h3 class="mt-6 font-display text-xl font-medium text-white">チャンネルを眺める</h3>
+              <p class="mt-3 text-sm leading-loose text-dim">興味のあるチャンネルだけ表示したり、通知を調整したり自由に設定できます。</p>
               <div class="the-line mt-8 h-px w-full bg-white/10"></div>
             </div>
             <div data-reveal>
               <div class="font-display text-7xl font-light text-white/15">参</div>
-              <h3 class="mt-6 font-display text-xl font-medium text-white">毎朝届くのを待つ</h3>
-              <p class="mt-3 text-sm leading-loose text-dim">あとは放置。新しい記事は Discord フォーラムにスレッドとして毎日届きます。</p>
+              <h3 class="mt-6 font-display text-xl font-medium text-white">自ら動く</h3>
+              <p class="mt-3 text-sm leading-loose text-dim">場はそれぞれが動くことで醸成されます。</p>
               <div class="the-line mt-8 h-px w-full bg-white/10"></div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Discord preview -->
-      <section id="preview" class="py-28 md:py-36">
-        <div class="mx-auto w-[min(1200px,90%)]">
-          <div class="mb-20 text-center" data-reveal>
-            <h2 class="font-display text-4xl font-medium tracking-[0.15em] text-white md:text-5xl">届くもの</h2>
-            <p class="mt-5 text-sm tracking-[0.25em] text-dim">
-              フォーラム<span class="text-accent">スレッド</span>のイメージ
-            </p>
-          </div>
-          <div class="mx-auto w-[min(620px,100%)] text-left" data-reveal>
-            <div class="border border-white/10 bg-white/[0.02] shadow-[0_40px_100px_rgba(0,0,0,0.6)]">
-              <div class="flex items-center gap-3 border-b border-white/10 px-6 py-4 text-sm">
-                <span class="size-2 rounded-full bg-emerald-400/80"></span>
-                <span class="font-normal tracking-wide"># news-forum</span>
-                <span class="ml-auto text-xs tracking-[0.15em] text-dim">ゆうこくBOT</span>
-              </div>
-              <div class="grid gap-4 p-6">
-                <div class="border-l-2 border-accent/60 pl-5">
-                  <span class="text-xs tracking-[0.15em] text-accent-3">技術</span>
-                  <div class="mt-2 text-white">新フレームワークが OSS として公開</div>
-                  <p class="mt-1.5 text-sm leading-relaxed text-dim">公式ブログにて詳細が発表されました。パフォーマンスと DX の向上が主な変更点です。</p>
-                  <span class="mt-3 inline-block text-sm tracking-[0.1em] text-accent">続きを読む →</span>
-                </div>
-                <div class="border-l border-white/10 pl-5 opacity-50">
-                  <span class="text-xs tracking-[0.15em] text-accent-2">リリース</span>
-                  <div class="mt-2 text-white">v2.4.0 リリースノート</div>
-                  <span class="mt-3 inline-block text-sm tracking-[0.1em] text-dim">続きを読む →</span>
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -235,10 +289,10 @@
         <div class="relative mx-auto w-[min(800px,92%)] text-center" data-reveal>
           <div class="the-line mx-auto mb-10 h-px w-16 bg-white/15"></div>
           <h2 class="font-display text-4xl font-medium leading-snug tracking-[0.1em] text-white md:text-5xl">
-            今すぐ、雲の下へ。
+            今すぐ、戦う準備を。
           </h2>
           <p class="mx-auto mt-8 max-w-[480px] leading-loose text-dim">
-            参加は1分。あとは毎朝、雲のように記事が届きます。
+            参加は1分。あとはあなた次第です。
           </p>
           <a data-discord-invite
             class="mt-12 inline-flex items-center gap-3 bg-[#5865F2] px-12 py-4 text-sm font-medium tracking-[0.15em] text-white shadow-[0_8px_30px_rgba(88,101,242,0.35)] transition duration-300 hover:-translate-y-0.5 hover:bg-[#4752c4]"
@@ -255,11 +309,8 @@
 
     <footer class="border-t border-white/[0.06]">
       <div
-        class="mx-auto flex w-[min(1200px,90%)] flex-col items-center justify-between gap-4 py-10 text-sm text-dim md:flex-row">
+        class="mx-auto flex w-[min(1200px,90%)] flex-col items-center justify-center gap-4 py-10 text-sm text-dim md:flex-row">
         <span>© 2026 ゆうこくサーバー</span>
-        <span>Discord ニュースコミュニティ</span>
-        <a class="link-underline transition-colors hover:text-white" href="https://github.com/ritehand/asagumo-run"
-          target="_blank" rel="noopener">GitHub</a>
       </div>
     </footer>
   </div>
