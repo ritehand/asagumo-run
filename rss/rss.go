@@ -33,6 +33,10 @@ type FeedConfig struct {
 //      → 起動時刻より古い記事を無視し、同じ記事を何度も配信しない
 //   2) seenGUIDs: 公開日時が取れないアイテム専用の軽量な重複排除セット
 //      （日付判定ができないアイテムの保険。件数上限つきFIFO）
+//   3) firstPollDone: 起動後の初回pollが済んだか。
+//      初回pollでは日付なしアイテムを「記録のみ」して投稿しない。
+//      これがないと再起動(デプロイ)のたびに、既知の過去記事が
+//      重複排除セットが空のためにすべて新着扱いで再配信されてしまう。
 
 type FeedState struct {
 	mu           sync.Mutex
@@ -40,8 +44,9 @@ type FeedState struct {
 	LastModified string
 	LastSeen     time.Time // これより新しい公開日時の記事だけを「新規」とみなす
 
-	seenGUIDs map[string]struct{} // 日付なしアイテム用の重複排除セット
-	guidOrder []string            // 上限を超えたら古いものから捨てるためのFIFO順
+	seenGUIDs     map[string]struct{} // 日付なしアイテム用の重複排除セット
+	guidOrder     []string            // 上限を超えたら古いものから捨てるためのFIFO順
+	firstPollDone bool
 }
 
 type StateMap struct {
@@ -123,15 +128,10 @@ func NewWatcher(maxConcurrent int, onUpdate OnUpdate) *Watcher {
 }
 
 // itemPublished は記事の公開日時を取り出す。取得できなければ nil。
-// pubDate が無い/壊れているフィードは意外と多いので、Updated も fallback に見る。
+// Updated はフォールバックに使わない。フィード再生成時などに updated だけ
+// 更新してくるサイトがあり、それを拾うと過去記事が新着扱いになってしまうため。
 func itemPublished(it *gofeed.Item) *time.Time {
-	if it.PublishedParsed != nil {
-		return it.PublishedParsed
-	}
-	if it.UpdatedParsed != nil {
-		return it.UpdatedParsed
-	}
-	return nil
+	return it.PublishedParsed
 }
 
 func (w *Watcher) poll(ctx context.Context, feed FeedConfig) {
@@ -186,12 +186,16 @@ func (w *Watcher) poll(ctx context.Context, feed FeedConfig) {
 	for _, item := range f.Items {
 		pub := itemPublished(item)
 		if pub == nil {
-			// 公開日時が取れないアイテムはGUID(相当)ベースの軽量な重複排除にフォールバック
+			// 公開日時が取れないアイテムはGUID(相当)ベースの軽量な重複排除にフォールバック。
+			// 初回pollでは記録のみで投稿しない(再起動のたびに過去記事を流さないため)。
 			key := itemGUIDKey(item)
 			if _, seen := state.seenGUIDs[key]; seen {
 				continue
 			}
 			state.markGUIDSeen(key)
+			if !state.firstPollDone {
+				continue
+			}
 			w.onUpdate(feed, f.Title, item) // ← ここで「特定のfunc」を実行
 			continue
 		}
@@ -204,6 +208,7 @@ func (w *Watcher) poll(ctx context.Context, feed FeedConfig) {
 		}
 	}
 	state.LastSeen = maxSeen
+	state.firstPollDone = true
 	state.ETag = resp.Header.Get("ETag")
 	state.LastModified = resp.Header.Get("Last-Modified")
 	state.mu.Unlock()
