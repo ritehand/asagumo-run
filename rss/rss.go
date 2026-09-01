@@ -242,32 +242,3 @@ func (w *Watcher) Run(ctx context.Context, feeds []FeedConfig) {
 	}
 	wg.Wait()
 }
-
-// ---- エントリポイント ----
-
-// func main() {
-// 	// 実際は設定ファイル(YAML/JSON)やDBから読み込む想定
-// 	feeds := []rss.FeedConfig{
-// 		{URL: "https://example.com/feed1.xml", Interval: 5 * time.Minute},
-// 		{URL: "https://example.com/feed2.xml", Interval: 10 * time.Minute},
-// 		// ... 数百〜数千件追加してもgoroutineは軽量なので問題ない
-// 	}
-
-// 	onUpdate := func(feedURL rss.FeedConfig, item *gofeed.Item) {
-// 		// ここが「更新があれば回す特定のfunc」
-// 		fmt.Printf("[NEW] %s: %s (%s)\n", feedURL, item.Title, item.Link)
-// 	}
-
-// 	watcher := rss.NewWatcher(20, onUpdate) // 同時に叩きに行くのは最大20フィードまで
-
-// 	ctx, cancel := context.WithCancel(context.Background())
-// 	sigCh := make(chan os.Signal, 1)
-// 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-// 	go func() {
-// 		<-sigCh
-// 		log.Println("shutting down...")
-// 		cancel()
-// 	}()
-
-// 	watcher.Run(ctx, feeds)
-// }
